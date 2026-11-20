@@ -102,6 +102,8 @@ def tune_mitigation_thresholds(
     reject_threshold: Optional[float] = None,
     reject_min_error: float = 0.30,
     reject_min_rows: int = 30,
+    reject_relative_factor: float = 2.0,
+    reject_error_cap: float = 0.50,
 ) -> Dict[str, Any]:
     """
     Select optimal trust and reject cutoffs from Out-Of-Fold (OOF) calibration probabilities.
@@ -122,6 +124,14 @@ def tune_mitigation_thresholds(
         Minimum error rate required in the REJECT band.
     reject_min_rows : int, default=30
         Minimum sample size required in the REJECT band.
+    reject_relative_factor : float, default=2.0
+        The REJECT band must also show at least this multiple of the overall
+        calibration error rate (capped at ``reject_error_cap``). Without it, a model
+        whose overall error already exceeds ``reject_min_error`` would send nearly
+        every non-TRUST prediction to REJECT, even when most of them are correct.
+    reject_error_cap : float, default=0.50
+        Upper bound on the relative requirement: a band where predictions are more
+        likely wrong than right always qualifies.
 
     Returns
     -------
@@ -224,8 +234,11 @@ def tune_mitigation_thresholds(
             msg_reject = f"Manual reject threshold adjusted below trust threshold to {chosen_reject:.3f}."
     else:
         # Data-driven: find highest value tau < chosen_trust such that
-        # observed error rate for trustworthiness < tau is >= reject_min_error
-        # and has at least reject_min_rows.
+        # observed error rate for trustworthiness < tau is >= the required error
+        # (max of reject_min_error and a multiple of the base error, capped) and
+        # has at least reject_min_rows.
+        base_error = float(np.mean(1 - y_arr))
+        required_error = max(reject_min_error, min(reject_error_cap, reject_relative_factor * base_error))
         candidate_rejects = np.unique(np.clip(np.round(oof_trust, 4), 0.10, chosen_trust - 0.001))
         # Scan descending (highest first)
         candidate_rejects = np.sort(candidate_rejects)[::-1]
@@ -235,18 +248,18 @@ def tune_mitigation_thresholds(
             n_rej = int(np.sum(rejected))
             if n_rej >= reject_min_rows:
                 err_rate = float(np.mean(1 - y_arr[rejected]))
-                if err_rate >= reject_min_error:
+                if err_rate >= required_error:
                     chosen_reject = float(tau)
                     msg_reject = (
                         f"Data-driven reject threshold set at {chosen_reject:.3f} "
-                        f"({n_rej} rows, observed error rate {err_rate*100:.1f}% >= {reject_min_error*100:.1f}%)."
+                        f"({n_rej} rows, observed error rate {err_rate*100:.1f}% >= {required_error*100:.1f}%)."
                     )
                     break
 
         if chosen_reject is None:
             msg_reject = (
                 f"No threshold below trust threshold ({chosen_trust:.3f}) has an observed error rate "
-                f">= {reject_min_error*100:.1f}% across at least {reject_min_rows} rows; REJECT band disabled."
+                f">= {required_error*100:.1f}% across at least {reject_min_rows} rows; REJECT band disabled."
             )
 
     full_message = f"{msg_trust} {msg_reject}".strip()
