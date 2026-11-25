@@ -91,6 +91,39 @@ class ReliabilityFeatureExtractor:
         self.classes_ = np.unique(y_train)
         self.num_classes_ = len(self.classes_)
 
+        self._fit_input_space(X_train_raw)
+
+        # 5. Train B bootstrap copies of base_pipeline on bootstrap samples of the train split
+        self.bootstrap_models_ = []
+        rng = np.random.RandomState(self.random_state)
+        n_train = len(X_train_raw)
+
+        # Stratified bootstrap: resample WITHIN each class so every bootstrap copy
+        # sees every class. A plain bootstrap can drop a rare class entirely, which
+        # makes predict_proba return fewer columns (misaligned probabilities) and
+        # makes XGBoost refuse to fit (it requires contiguous labels).
+        class_indices = [np.where(y_train == c)[0] for c in self.classes_]
+
+        for _ in range(self.n_bootstraps):
+            boot_idx = np.concatenate([
+                rng.choice(idx, size=len(idx), replace=True) for idx in class_indices
+            ])
+            rng.shuffle(boot_idx)
+            X_boot = X_train_raw.iloc[boot_idx]
+            y_boot = y_train[boot_idx]
+
+            boot_pipe = clone(base_pipeline)
+            boot_pipe.fit(X_boot, y_boot)
+            self.bootstrap_models_.append(boot_pipe)
+
+        return self
+
+    # ------------------------------------------------------------------
+    # Input-space signals (task independent; also used for regression)
+    # ------------------------------------------------------------------
+
+    def _fit_input_space(self, X_train_raw: pd.DataFrame) -> None:
+        """Fit ranges, categories, preprocessing, kNN and Isolation Forest on TRAIN data only."""
         # 1. Compute training boundaries and known categories directly from raw data
         self.train_min_ = {}
         self.train_max_ = {}
@@ -153,30 +186,116 @@ class ReliabilityFeatureExtractor:
         train_iso_scores = -self.isolation_forest_.score_samples(X_train_preproc)
         self.isolation_threshold_ = float(np.percentile(train_iso_scores, 95.0))
 
-        # 5. Train B bootstrap copies of base_pipeline on bootstrap samples of the train split
-        self.bootstrap_models_ = []
-        rng = np.random.RandomState(self.random_state)
-        n_train = len(X_train_raw)
+    def _input_space_signals(
+        self, X_raw: pd.DataFrame
+    ) -> Tuple[Dict[str, np.ndarray], List[List[Dict[str, Any]]]]:
+        """kNN / isolation / missingness / range / category signals and their flags."""
+        n_samples = len(X_raw)
+        # -----------------------------------------------------------------
+        # 3. Preprocessed Space Signals: kNN Distance & Isolation Forest
+        # -----------------------------------------------------------------
+        X_preproc = self.preprocessor_.transform(X_raw)
+        if hasattr(X_preproc, "toarray"):
+            X_preproc = X_preproc.toarray()
+        X_preproc = np.asarray(X_preproc, dtype=np.float64)
 
-        # Stratified bootstrap: resample WITHIN each class so every bootstrap copy
-        # sees every class. A plain bootstrap can drop a rare class entirely, which
-        # makes predict_proba return fewer columns (misaligned probabilities) and
-        # makes XGBoost refuse to fit (it requires contiguous labels).
-        class_indices = [np.where(y_train == c)[0] for c in self.classes_]
+        # kNN distance & percentile relative to train LOO distribution
+        distances, _ = self.knn_.kneighbors(X_preproc)
+        knn_distance = distances.mean(axis=1)
 
-        for _ in range(self.n_bootstraps):
-            boot_idx = np.concatenate([
-                rng.choice(idx, size=len(idx), replace=True) for idx in class_indices
-            ])
-            rng.shuffle(boot_idx)
-            X_boot = X_train_raw.iloc[boot_idx]
-            y_boot = y_train[boot_idx]
+        # Percentile rank in train LOO distances (in [0, 100])
+        if len(self.train_knn_distances_) > 0:
+            rank = np.searchsorted(self.train_knn_distances_, knn_distance, side="right")
+            knn_distance_percentile = np.clip(
+                (rank / len(self.train_knn_distances_)) * 100.0,
+                0.0,
+                100.0,
+            )
+        else:
+            knn_distance_percentile = np.zeros(n_samples, dtype=np.float64)
 
-            boot_pipe = clone(base_pipeline)
-            boot_pipe.fit(X_boot, y_boot)
-            self.bootstrap_models_.append(boot_pipe)
+        # Isolation Forest score (higher = more anomalous/unusual)
+        isolation_score = -self.isolation_forest_.score_samples(X_preproc)
 
-        return self
+        # -----------------------------------------------------------------
+        # 4. Raw Input Data Quality Signals
+        # -----------------------------------------------------------------
+        total_cols = max(1, len(X_raw.columns))
+        missing_count = X_raw.isna().sum(axis=1).values.astype(int)
+        missing_fraction = missing_count / float(total_cols)
+
+        out_of_range_count = np.zeros(n_samples, dtype=int)
+        unseen_category_count = np.zeros(n_samples, dtype=int)
+
+        # Diagnostic flags per sample
+        flags: List[List[Dict[str, Any]]] = [[] for _ in range(n_samples)]
+
+        # Check missing fields
+        for col in X_raw.columns:
+            is_na = X_raw[col].isna().values
+            for i in np.where(is_na)[0]:
+                flags[i].append({"type": "missing_feature", "feature": str(col)})
+
+        # Check numeric out-of-range
+        for col in self.numeric_features_:
+            if col in X_raw.columns:
+                series = pd.to_numeric(X_raw[col], errors="coerce").values
+                min_val = self.train_min_.get(col, -np.inf)
+                max_val = self.train_max_.get(col, np.inf)
+
+                non_na = ~np.isnan(series)
+                below = non_na & (series < min_val)
+                above = non_na & (series > max_val)
+                outliers = below | above
+
+                for i in np.where(outliers)[0]:
+                    out_of_range_count[i] += 1
+                    flags[i].append({
+                        "type": "out_of_range",
+                        "feature": str(col),
+                        "value": float(series[i]),
+                        "train_min": min_val,
+                        "train_max": max_val,
+                    })
+
+        # Check unseen categories
+        for col in self.categorical_features_:
+            if col in X_raw.columns:
+                known = self.train_categories_.get(col, set())
+                vals = X_raw[col].values
+                for i in range(n_samples):
+                    v = vals[i]
+                    if pd.notna(v) and str(v) not in known:
+                        unseen_category_count[i] += 1
+                        flags[i].append({
+                            "type": "unseen_category",
+                            "feature": str(col),
+                            "value": str(v),
+                        })
+
+        for i in range(n_samples):
+            if knn_distance_percentile[i] >= 95.0:
+                flags[i].append({
+                    "type": "high_knn_distance",
+                    "percentile": round(float(knn_distance_percentile[i]), 1),
+                    "distance": round(float(knn_distance[i]), 4),
+                })
+            if isolation_score[i] >= self.isolation_threshold_:
+                flags[i].append({
+                    "type": "high_isolation_score",
+                    "score": round(float(isolation_score[i]), 4),
+                    "threshold": round(float(self.isolation_threshold_), 4),
+                })
+
+        return {
+            "knn_distance": knn_distance,
+            "knn_distance_percentile": knn_distance_percentile,
+            "isolation_score": isolation_score,
+            "missing_count": missing_count,
+            "missing_fraction": missing_fraction,
+            "out_of_range_count": out_of_range_count,
+            "unseen_category_count": unseen_category_count,
+        }, flags
 
     def transform(self, X_raw: pd.DataFrame, model1) -> pd.DataFrame:
         """
@@ -307,101 +426,20 @@ class ReliabilityFeatureExtractor:
             bootstrap_disagreement = np.zeros(n_samples, dtype=np.float64)
 
         # -----------------------------------------------------------------
-        # 3. Preprocessed Space Signals: kNN Distance & Isolation Forest
+        # 3-4. Input-space signals (kNN distance, isolation, missingness, ranges,
+        #      categories) shared with the regression extractor
         # -----------------------------------------------------------------
-        X_preproc = self.preprocessor_.transform(X_raw)
-        if hasattr(X_preproc, "toarray"):
-            X_preproc = X_preproc.toarray()
-        X_preproc = np.asarray(X_preproc, dtype=np.float64)
+        inp, flags = self._input_space_signals(X_raw)
+        knn_distance = inp["knn_distance"]
+        knn_distance_percentile = inp["knn_distance_percentile"]
+        isolation_score = inp["isolation_score"]
+        missing_count = inp["missing_count"]
+        missing_fraction = inp["missing_fraction"]
+        out_of_range_count = inp["out_of_range_count"]
+        unseen_category_count = inp["unseen_category_count"]
 
-        # kNN distance & percentile relative to train LOO distribution
-        distances, _ = self.knn_.kneighbors(X_preproc)
-        knn_distance = distances.mean(axis=1)
-
-        # Percentile rank in train LOO distances (in [0, 100])
-        if len(self.train_knn_distances_) > 0:
-            rank = np.searchsorted(self.train_knn_distances_, knn_distance, side="right")
-            knn_distance_percentile = np.clip(
-                (rank / len(self.train_knn_distances_)) * 100.0,
-                0.0,
-                100.0,
-            )
-        else:
-            knn_distance_percentile = np.zeros(n_samples, dtype=np.float64)
-
-        # Isolation Forest score (higher = more anomalous/unusual)
-        isolation_score = -self.isolation_forest_.score_samples(X_preproc)
-
-        # -----------------------------------------------------------------
-        # 4. Raw Input Data Quality Signals
-        # -----------------------------------------------------------------
-        total_cols = max(1, len(X_raw.columns))
-        missing_count = X_raw.isna().sum(axis=1).values.astype(int)
-        missing_fraction = missing_count / float(total_cols)
-
-        out_of_range_count = np.zeros(n_samples, dtype=int)
-        unseen_category_count = np.zeros(n_samples, dtype=int)
-
-        # Diagnostic flags per sample
-        flags: List[List[Dict[str, Any]]] = [[] for _ in range(n_samples)]
-
-        # Check missing fields
-        for col in X_raw.columns:
-            is_na = X_raw[col].isna().values
-            for i in np.where(is_na)[0]:
-                flags[i].append({"type": "missing_feature", "feature": str(col)})
-
-        # Check numeric out-of-range
-        for col in self.numeric_features_:
-            if col in X_raw.columns:
-                series = pd.to_numeric(X_raw[col], errors="coerce").values
-                min_val = self.train_min_.get(col, -np.inf)
-                max_val = self.train_max_.get(col, np.inf)
-
-                non_na = ~np.isnan(series)
-                below = non_na & (series < min_val)
-                above = non_na & (series > max_val)
-                outliers = below | above
-
-                for i in np.where(outliers)[0]:
-                    out_of_range_count[i] += 1
-                    flags[i].append({
-                        "type": "out_of_range",
-                        "feature": str(col),
-                        "value": float(series[i]),
-                        "train_min": min_val,
-                        "train_max": max_val,
-                    })
-
-        # Check unseen categories
-        for col in self.categorical_features_:
-            if col in X_raw.columns:
-                known = self.train_categories_.get(col, set())
-                vals = X_raw[col].values
-                for i in range(n_samples):
-                    v = vals[i]
-                    if pd.notna(v) and str(v) not in known:
-                        unseen_category_count[i] += 1
-                        flags[i].append({
-                            "type": "unseen_category",
-                            "feature": str(col),
-                            "value": str(v),
-                        })
-
-        # Contextual extreme signals flags
+        # Output-space flags follow each record's input-space flags (same order as before)
         for i in range(n_samples):
-            if knn_distance_percentile[i] >= 95.0:
-                flags[i].append({
-                    "type": "high_knn_distance",
-                    "percentile": round(float(knn_distance_percentile[i]), 1),
-                    "distance": round(float(knn_distance[i]), 4),
-                })
-            if isolation_score[i] >= self.isolation_threshold_:
-                flags[i].append({
-                    "type": "high_isolation_score",
-                    "score": round(float(isolation_score[i]), 4),
-                    "threshold": round(float(self.isolation_threshold_), 4),
-                })
             if bootstrap_disagreement[i] >= 0.30:
                 flags[i].append({
                     "type": "high_bootstrap_disagreement",

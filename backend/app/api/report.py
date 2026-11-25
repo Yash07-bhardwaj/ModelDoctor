@@ -5,12 +5,12 @@ from fastapi import APIRouter
 from app.api.deps import require_artifacts
 from app.core import sessions
 from app.core.errors import conflict
-from app.schemas.models import ReportResponse, SchemaResponse
+from app.schemas.models import AnyReportResponse, AnySchemaResponse
 
 router = APIRouter(prefix="/api", tags=["report"])
 
 
-@router.get("/report/{session_id}", response_model=ReportResponse)
+@router.get("/report/{session_id}", response_model=AnyReportResponse)
 def get_report(session_id: str):
     """Leaderboard, selected model, ModelDoctor vs confidence baseline metrics and chart data."""
     require_artifacts(session_id)
@@ -21,10 +21,17 @@ def get_report(session_id: str):
     return report
 
 
-@router.get("/schema/{session_id}", response_model=SchemaResponse)
+@router.get("/schema/{session_id}", response_model=AnySchemaResponse)
 def get_schema(session_id: str):
     """Feature names, types, categories and train ranges for auto-building the input form."""
     artifacts = require_artifacts(session_id)
+    if artifacts.get("task_type") == "regression":
+        return {
+            "session_id": session_id,
+            "task_type": "regression",
+            "target_column": artifacts["target_column"],
+            "features": artifacts["feature_schema"],
+        }
     return {
         "session_id": session_id,
         "target_column": artifacts["target_column"],

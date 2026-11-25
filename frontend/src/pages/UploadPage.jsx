@@ -3,7 +3,22 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage } from "../api/client.js";
 import { Button, Card, Empty, ErrorBox, Notice, Spinner, Table, pct, useLoader } from "../components/ui.jsx";
 
-const MODELS = ["Logistic Regression", "Decision Tree", "Random Forest", "XGBoost", "KNN"];
+const MODELS = {
+  classification: ["Logistic Regression", "Decision Tree", "Random Forest", "XGBoost", "KNN"],
+  regression: ["Ridge Regression", "Decision Tree", "Random Forest", "XGBoost", "KNN"],
+};
+
+function TargetSummary({ summary }) {
+  if (!summary || summary.min === undefined) return null;
+  const n = (v) => (Math.abs(v) >= 1e5 || (v !== 0 && Math.abs(v) < 1e-3) ? v.toExponential(3) : String(Number(v.toPrecision(5))));
+  return (
+    <div className="grid grid-cols-3 gap-3" data-testid="target-summary">
+      <Mini label="Target min" value={n(summary.min)} />
+      <Mini label="Median" value={n(summary.median)} />
+      <Mini label="Max" value={n(summary.max)} />
+    </div>
+  );
+}
 
 function Dropzone({ onFile, busy }) {
   const [over, setOver] = React.useState(false);
@@ -33,7 +48,7 @@ function Dropzone({ onFile, busy }) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
       </svg>
       <div className="mt-3 font-medium text-slate-800">{busy ? "Uploading…" : "Drop a CSV here, or click to browse"}</div>
-      <div className="mt-1 text-sm text-slate-500">Tabular classification data · at least 500 rows · up to 50 MB</div>
+      <div className="mt-1 text-sm text-slate-500">Tabular classification or regression data · at least 500 rows · up to 50 MB</div>
       <input
         ref={inputRef}
         type="file"
@@ -61,6 +76,7 @@ function ProfilePanel({ profile }) {
         <Mini label="Task" value={profile.detected_task ? profile.detected_task.replace("_classification", "") : "—"} />
         <Mini label="Imbalance" value={profile.imbalance_ratio ? `${profile.imbalance_ratio}×` : "—"} />
       </div>
+      {profile.valid && <TargetSummary summary={profile.target_summary} />}
       {profile.valid ? (
         classes.length > 0 && (
           <div>
@@ -182,7 +198,8 @@ export default function UploadPage() {
   const [target, setTarget] = React.useState("");
   const [profile, setProfile] = React.useState(null);
   const [profileLoading, setProfileLoading] = React.useState(false);
-  const [opts, setOpts] = React.useState({ target_risk: 5, min_coverage: 30, force_model: "", fast: false, force_review_on_anomalies: false });
+  const [task, setTask] = React.useState("classification");
+  const [opts, setOpts] = React.useState({ target_risk: 5, min_coverage: 30, force_model: "", fast: false, force_review_on_anomalies: false, error_tolerance: "" });
   const [starting, setStarting] = React.useState(false);
 
   const onFile = async (file) => {
@@ -206,14 +223,14 @@ export default function UploadPage() {
     let cancelled = false;
     setProfileLoading(true);
     api
-      .profile(upload.session_id, target)
+      .profile(upload.session_id, target, task)
       .then((p) => !cancelled && setProfile(p))
       .catch((e) => !cancelled && setProfile({ valid: false, validation_error: errorMessage(e), row_count: upload.rows }))
       .finally(() => !cancelled && setProfileLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [upload, target]);
+  }, [upload, target, task]);
 
   const start = async () => {
     setStarting(true);
@@ -226,6 +243,8 @@ export default function UploadPage() {
         force_model: opts.force_model || null,
         fast: opts.fast,
         force_review_on_anomalies: opts.force_review_on_anomalies,
+        task_type: task,
+        ...(task === "regression" && opts.error_tolerance !== "" ? { error_tolerance: Number(opts.error_tolerance) } : {}),
       });
       navigate(`/s/${upload.session_id}/train`);
     } catch (e) {
@@ -298,7 +317,25 @@ export default function UploadPage() {
                 </select>
               </label>
 
+              <fieldset>
+                <legend className="text-sm font-medium text-slate-700">Task</legend>
+                <div className="mt-1 flex gap-4 text-sm">
+                  {[["classification", "Classification (categories)"], ["regression", "Regression (numeric value)"]].map(([v, label]) => (
+                    <label key={v} className="flex items-center gap-1.5">
+                      <input type="radio" name="task" value={v} checked={task === v}
+                        onChange={() => { setTask(v); setOpts((o) => ({ ...o, force_model: "" })); }} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               {profileLoading ? <Spinner label="Profiling…" /> : <ProfilePanel profile={profile} />}
+              {!profileLoading && profile?.suggested_task === "regression" && task !== "regression" && (
+                <Button variant="secondary" className="w-full" onClick={() => setTask("regression")}>
+                  This target looks continuous — train it as regression
+                </Button>
+              )}
 
               <details className="rounded-lg border border-slate-200 p-3 text-sm">
                 <summary className="cursor-pointer font-medium text-slate-700">Advanced options</summary>
@@ -320,9 +357,17 @@ export default function UploadPage() {
                     <select value={opts.force_model} onChange={(e) => setOpts({ ...opts, force_model: e.target.value })}
                       className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1">
                       <option value="">Automatic (best cross-validation score)</option>
-                      {MODELS.map((m) => <option key={m} value={m}>Force {m}</option>)}
+                      {MODELS[task].map((m) => <option key={m} value={m}>Force {m}</option>)}
                     </select>
                   </label>
+                  {task === "regression" && (
+                    <label className="col-span-2 block">
+                      <span className="text-xs text-slate-600">Error tolerance (target units; blank = 90th percentile of Model 1's training errors)</span>
+                      <input type="number" min="0" step="any" value={opts.error_tolerance}
+                        onChange={(e) => setOpts({ ...opts, error_tolerance: e.target.value })}
+                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1" />
+                    </label>
+                  )}
                   <label className="col-span-2 flex items-center gap-2">
                     <input type="checkbox" checked={opts.fast} onChange={(e) => setOpts({ ...opts, fast: e.target.checked })} />
                     <span className="text-xs text-slate-600">Fast mode (smaller ensembles, for quick demos)</span>

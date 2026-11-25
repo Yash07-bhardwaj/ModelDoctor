@@ -1,13 +1,20 @@
 import React from "react";
+import { RegressionResultCard, fmtNum } from "../components/regression.jsx";
 import { Link, useParams } from "react-router-dom";
 import { api, errorMessage } from "../api/client.js";
 import { Button, Card, DecisionBadge, Empty, ErrorBox, Notice, Spinner, Table, pct, useLoader } from "../components/ui.jsx";
+import { DecisionSummary, ExplanationPanel, RiskBadge, TrafficLight } from "../components/decision.jsx";
 
-const DECISION_TEXT = {
-  TRUST: "Meets the required reliability. Accept the prediction.",
-  REVIEW: "Warning signs or elevated error risk. Flag for a human to check.",
-  REJECT: "Does not meet the required reliability. Do not act on this prediction.",
-};
+/** Client-side checks that mirror the API's validation, so obvious mistakes are caught before sending. */
+export function validateValues(features, values) {
+  const errors = {};
+  for (const f of features) {
+    const v = values[f.name];
+    if (f.type === "numeric" && v !== "" && v !== undefined && !Number.isFinite(Number(v))) errors[f.name] = "must be a finite number";
+    if (f.type === "categorical" && typeof v === "string" && v.length > 1000) errors[f.name] = "at most 1000 characters";
+  }
+  return errors;
+}
 
 function typicalValues(features) {
   return Object.fromEntries(
@@ -21,7 +28,7 @@ function typicalValues(features) {
   );
 }
 
-function Field({ spec, value, onChange }) {
+function Field({ spec, value, onChange, error }) {
   const id = `f-${spec.name}`;
   const base = "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
   const outOfRange =
@@ -37,6 +44,7 @@ function Field({ spec, value, onChange }) {
       </span>
       {spec.type === "numeric" ? (
         <input id={id} type="number" step="any" className={base} value={value} placeholder="blank = missing"
+          aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-err` : undefined}
           onChange={(e) => onChange(e.target.value)} />
       ) : (
         <>
@@ -47,6 +55,7 @@ function Field({ spec, value, onChange }) {
           </datalist>
         </>
       )}
+      {error && <span id={`${id}-err`} className="text-xs font-medium text-rose-700">{error}</span>}
       {outOfRange && <span className="text-xs text-amber-700">outside the training range</span>}
       {unseen && <span className="text-xs text-amber-700">not seen in training</span>}
     </label>
@@ -69,6 +78,7 @@ function GapBar({ label, value, color, hint }) {
 }
 
 function ResultCard({ result, target }) {
+  if (result.task_type === "regression") return <RegressionResultCard result={result} target={target} />;
   const gap = result.confidence - result.trustworthiness;
   return (
     <Card>
@@ -76,14 +86,15 @@ function ResultCard({ result, target }) {
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Prediction · {target}</div>
           <div className="mt-1 text-3xl font-semibold">{result.prediction}</div>
+          <div className="mt-1"><RiskBadge level={result.risk_level} /></div>
         </div>
-        <DecisionBadge decision={result.decision} large />
+        <DecisionSummary result={result} />
       </div>
-      <p className="mt-2 text-sm text-slate-600">{DECISION_TEXT[result.decision]}</p>
 
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         <GapBar label="Model confidence" value={result.confidence} color="#64748b" hint="What Model 1 claims (its top class probability)" />
-        <GapBar label="Trustworthiness" value={result.trustworthiness} color="#4f46e5" hint="What ModelDoctor estimates: P(this prediction is correct)" />
+        <GapBar label="Trustworthiness" value={result.trustworthiness} color="#4f46e5"
+          hint={result.reliability_mode === "model2" ? "ModelDoctor's estimate: P(this prediction is correct)" : "Calibrated confidence (reliability model unavailable)"} />
       </div>
       {Math.abs(gap) >= 0.05 && (
         <p className="mt-3 text-sm text-slate-600">
@@ -93,21 +104,7 @@ function ResultCard({ result, target }) {
         </p>
       )}
 
-      <div className="mt-5">
-        <div className="mb-2 text-sm font-medium text-slate-700">Warnings</div>
-        {result.warnings.length === 0 ? (
-          <div className="text-sm text-slate-500">No warning signs.</div>
-        ) : (
-          <ul className="space-y-1.5">
-            {result.warnings.map((w, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <code className="mt-0.5 shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">{w.code}</code>
-                <span>{w.message}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <div className="mt-5"><ExplanationPanel result={result} /></div>
 
       <details className="mt-5 text-sm">
         <summary className="cursor-pointer text-slate-600">Class probabilities & reliability signals</summary>
@@ -142,11 +139,13 @@ function BatchPanel({ id }) {
   const [error, setError] = React.useState(null);
   const [res, setRes] = React.useState(null);
   const [filter, setFilter] = React.useState("ALL");
+  const [selected, setSelected] = React.useState(null);
 
   const onFile = async (file) => {
     setBusy(true);
     setError(null);
     setRes(null);
+    setSelected(null);
     try {
       setRes(await api.predictBatch(id, file));
     } catch (e) {
@@ -156,11 +155,15 @@ function BatchPanel({ id }) {
     }
   };
 
+  const isReg = res?.results?.[0]?.task_type === "regression";
   const download = () => {
     const rows = res.results.map((r) => ({
-      prediction_id: r.prediction_id, prediction: r.prediction, confidence: r.confidence,
-      trustworthiness: r.trustworthiness, decision: r.decision, actual: r.actual ?? "",
-      warnings: r.warnings.map((w) => w.code).join("|"),
+      prediction_id: r.prediction_id, prediction: r.prediction,
+      ...(isReg
+        ? { estimated_abs_error: r.estimated_abs_error }
+        : { confidence: r.confidence, trustworthiness: r.trustworthiness }),
+      decision: r.decision, risk_level: r.risk_level, actual: r.actual ?? "",
+      warnings: r.warnings.map((w) => w.code).join("|"), explanation: r.explanation,
     }));
     const blob = new Blob([toCsv(rows, Object.keys(rows[0]))], { type: "text/csv" });
     const a = document.createElement("a");
@@ -199,16 +202,44 @@ function BatchPanel({ id }) {
               rowKey={(r) => r.prediction_id}
               columns={[
                 { key: "i", label: "#", render: (r) => res.results.indexOf(r) + 1 },
-                { key: "prediction", label: "Prediction" },
-                { key: "actual", label: "Actual", render: (r) => r.actual ?? "—" },
-                { key: "confidence", label: "Confidence", align: "right", render: (r) => pct(r.confidence) },
-                { key: "trustworthiness", label: "Trust", align: "right", render: (r) => pct(r.trustworthiness) },
-                { key: "decision", label: "Decision", render: (r) => <DecisionBadge decision={r.decision} /> },
+                ...(isReg
+                  ? [
+                    { key: "prediction", label: "Prediction", align: "right", render: (r) => fmtNum(r.prediction) },
+                    { key: "actual", label: "Actual", align: "right", render: (r) => fmtNum(r.actual) },
+                    { key: "estimated_abs_error", label: "Est. error", align: "right", render: (r) => fmtNum(r.estimated_abs_error) },
+                  ]
+                  : [
+                    { key: "prediction", label: "Prediction" },
+                    { key: "actual", label: "Actual", render: (r) => r.actual ?? "—" },
+                    { key: "confidence", label: "Confidence", align: "right", render: (r) => pct(r.confidence) },
+                    { key: "trustworthiness", label: "Trust", align: "right", render: (r) => pct(r.trustworthiness) },
+                  ]),
+                { key: "decision", label: "Decision", render: (r) => (
+                  <span className="inline-flex items-center gap-2"><TrafficLight decision={r.decision} size="sm" /><DecisionBadge decision={r.decision} /></span>
+                ) },
+                { key: "risk", label: "Risk", render: (r) => <RiskBadge level={r.risk_level} /> },
                 { key: "warnings", label: "Warnings", render: (r) => <span className="text-xs text-slate-500">{r.warnings.map((w) => w.code).join(", ") || "—"}</span> },
+                { key: "why", label: "", render: (r) => (
+                  <button type="button" onClick={() => setSelected(r)} aria-label={`Explain row ${res.results.indexOf(r) + 1}`}
+                    className={`text-xs font-medium underline ${selected === r ? "text-slate-900" : "text-indigo-600"}`}>Why?</button>
+                ) },
               ]}
             />
             {shown.length > 500 && <div className="p-2 text-xs text-slate-500">Showing first 500 rows; download the CSV for all.</div>}
           </div>
+          {selected && (
+            <div className="rounded-lg border border-slate-200 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm">
+                  Row {res.results.indexOf(selected) + 1}: predicted <b>{isReg ? fmtNum(selected.prediction) : selected.prediction}</b> ·{" "}
+                  {isReg ? `estimated error ≈ ${fmtNum(selected.estimated_abs_error)}` : `confidence ${pct(selected.confidence)}`}
+                  {" "}· <RiskBadge level={selected.risk_level} />
+                </div>
+                <DecisionSummary result={selected} />
+              </div>
+              <ExplanationPanel result={selected} />
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -222,6 +253,7 @@ export default function PredictPage() {
   const [result, setResult] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [predError, setPredError] = React.useState(null);
+  const [fieldErrors, setFieldErrors] = React.useState({});
 
   React.useEffect(() => {
     if (schema) setValues(typicalValues(schema.features));
@@ -238,6 +270,12 @@ export default function PredictPage() {
 
   const submit = async (e) => {
     e.preventDefault();
+    const errors = validateValues(schema.features, values);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      setPredError("Fix the highlighted fields first.");
+      return;
+    }
     setBusy(true);
     setPredError(null);
     try {
@@ -261,8 +299,9 @@ export default function PredictPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Predict</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Enter a new record. The true outcome is unknown here. ModelDoctor reports Model 1's claimed confidence next to its
-          own estimate of how likely the prediction is to be correct.
+          {schema.task_type === "regression"
+            ? "Enter a new record. The true value is unknown here. ModelDoctor reports Model 1's numeric prediction with an estimate of how far off it is likely to be."
+            : "Enter a new record. The true outcome is unknown here. ModelDoctor reports Model 1's claimed confidence next to its own estimate of how likely the prediction is to be correct."}
         </p>
       </div>
       <div className="grid gap-6 lg:grid-cols-5">
@@ -276,7 +315,8 @@ export default function PredictPage() {
           <form onSubmit={submit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               {schema.features.map((f) => (
-                <Field key={f.name} spec={f} value={values[f.name] ?? ""} onChange={(v) => setValues((s) => ({ ...s, [f.name]: v }))} />
+                <Field key={f.name} spec={f} value={values[f.name] ?? ""} error={fieldErrors[f.name]}
+                  onChange={(v) => setValues((s) => ({ ...s, [f.name]: v }))} />
               ))}
             </div>
             <ErrorBox message={predError} />
@@ -290,11 +330,18 @@ export default function PredictPage() {
             <Card>
               <Empty title="No prediction yet">Fill the form and press Predict.</Empty>
               <div className="mt-4">
+                {schema.task_type === "regression" ? (
+                  <Notice tone="info">
+                    <b>Estimated error.</b> Learned from Model 1's errors on data it never trained on. It is an expected
+                    absolute error, not a guaranteed bound.
+                  </Notice>
+                ) : (
                 <Notice tone="info">
                   <b>Confidence vs trustworthiness.</b> Confidence is what the model claims. Trustworthiness is learned from
                   Model 1's past mistakes on data it never trained on, using signals such as model disagreement, distance
                   from the training data and missing or out-of-range inputs.
                 </Notice>
+                )}
               </div>
             </Card>
           )}

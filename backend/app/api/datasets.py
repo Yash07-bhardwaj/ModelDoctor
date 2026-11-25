@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, File, Query, UploadFile
 
@@ -13,10 +14,12 @@ from app.schemas.models import ProfileResponse, SessionSummary, UploadResponse
 from ml.data.loader import (
     MIN_REQUIRED_ROWS,
     DatasetValidationError,
+    UnsupportedTaskError,
     is_continuous_target,
     load_dataset,
 )
 from ml.data.profiler import profile_dataset
+from ml.task import REGRESSION, resolve_task_type
 
 router = APIRouter(prefix="/api", tags=["datasets"])
 
@@ -26,6 +29,26 @@ _TARGET_HINTS = ["target", "label", "class", "default", "outcome", "y", "survive
 def _is_target_candidate(series: pd.Series) -> bool:
     n_unique = series.nunique(dropna=True)
     return 2 <= n_unique <= 50 and not is_continuous_target(series)
+
+
+def _is_regression_candidate(series: pd.Series) -> bool:
+    """A suggestion only: the user must still choose task_type="regression" explicitly."""
+    return bool(pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
+                and is_continuous_target(series))
+
+
+def _regression_target_summary(target: pd.Series) -> dict:
+    t = pd.to_numeric(target, errors="coerce")
+    finite = t[np.isfinite(t)] if len(t) else t
+    if len(finite) == 0:
+        return {}
+    return {
+        "min": float(finite.min()), "median": float(finite.median()), "max": float(finite.max()),
+        "mean": float(finite.mean()), "std": float(finite.std(ddof=0)),
+        "unique_values": int(finite.nunique()),
+        "zero_share": round(float((finite == 0).mean()), 4),
+        "negative_share": round(float((finite < 0).mean()), 4),
+    }
 
 
 def _suggest_target(df: pd.DataFrame) -> Optional[str]:
@@ -60,6 +83,7 @@ async def upload_dataset(file: UploadFile = File(...)):
             "missing_count": int(df[c].isna().sum()),
             "unique_count": int(df[c].nunique(dropna=True)),
             "is_target_candidate": bool(_is_target_candidate(df[c])),
+            "is_regression_candidate": _is_regression_candidate(df[c]),
         }
         for c in df.columns
     ]
@@ -78,8 +102,16 @@ async def upload_dataset(file: UploadFile = File(...)):
 
 
 @router.get("/datasets/{session_id}/profile", response_model=ProfileResponse)
-def get_profile(session_id: str, target_column: Optional[str] = Query(None)):
-    """Rows, types, missing values, class balance, detected task, and whether the target is valid."""
+def get_profile(
+    session_id: str,
+    target_column: Optional[str] = Query(None),
+    task_type: str = Query("classification", description="classification | regression"),
+):
+    """Rows, types, missing values, class balance / target summary, task, and whether the target is valid."""
+    try:
+        task = resolve_task_type(task_type)
+    except ValueError as exc:
+        raise bad_request(str(exc))
     meta = sessions.get_meta(session_id)
     target = target_column or meta.get("target_column") or meta.get("suggested_target")
     df = pd.read_csv(sessions.raw_csv_path(session_id))
@@ -89,13 +121,27 @@ def get_profile(session_id: str, target_column: Optional[str] = Query(None)):
     if target not in df.columns:
         raise bad_request(f"Target column '{target}' not found. Available columns: {list(df.columns)}")
 
-    valid, error = True, None
+    valid, error, suggested_task = True, None, None
     try:
-        load_dataset(str(sessions.raw_csv_path(session_id)), target)
+        load_dataset(str(sessions.raw_csv_path(session_id)), target, task_type=task)
+    except UnsupportedTaskError as exc:
+        valid, error, suggested_task = False, str(exc), REGRESSION
     except DatasetValidationError as exc:
         valid, error = False, str(exc)
-
     profile = profile_dataset(df, target)
+    if task == REGRESSION:
+        # Class balance is meaningless for a continuous target: report its distribution instead.
+        profile.update({
+            "detected_task": REGRESSION,
+            "class_distribution": {},
+            "class_percentages": {},
+            "imbalance_ratio": None,
+            "target_summary": _regression_target_summary(df[target]),
+            "warnings": [w for w in profile["warnings"] if "class imbalance" not in w],
+        })
+    profile["task_type"] = task
+    if suggested_task:
+        profile["suggested_task"] = suggested_task
     if not valid:
         profile["detected_task"] = None
     profile["min_required_rows"] = MIN_REQUIRED_ROWS

@@ -16,6 +16,21 @@ CRITICAL RULES:
 - Gradient Boosting is calibrated with CalibratedClassifierCV(method="sigmoid").
 - Produces Out-Of-Fold (OOF) probabilities of correctness for threshold tuning.
 - If fewer than 30 incorrect or correct predictions exist, flags 'insufficient_signal'.
+
+OUTPUT CONVENTION: Model 2 outputs P(correct) ("trustworthiness"); label 1 = Model 1's
+prediction was correct, 0 = it was wrong. P(error) = 1 - trustworthiness.
+
+CANDIDATES AND SELECTION (all scored on the SAME stratified 5-fold OOF split of the
+calibration set; the test split is never involved):
+- "Calibrated confidence": logistic regression on logit(max_prob) only (Platt scaling of
+  Model 1's confidence into P(correct)). This is the honest confidence baseline expressed
+  as a correctness probability; its ranking is identical to raw confidence.
+- "Probability signals" (multiclass only): logit(max_prob), margin, entropy.
+- "Logistic Regression" / "Gradient Boosting": all reliability features.
+The winner is the candidate with the lowest OOF Brier score (a proper scoring rule, so it
+rewards both error ranking and calibration of P(correct), which the thresholds rely on).
+Ties go to the simpler candidate. A feature-rich model is therefore only deployed when it
+genuinely beats calibrated confidence on held-out calibration rows.
 """
 
 from typing import Dict, Any, List, Optional, Tuple
@@ -28,7 +43,62 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
+
+
+# Relative tolerance when deciding whether a value is outside Model 2's training range.
+SUPPORT_TOLERANCE = 1e-6
+
+# Direction in which each reliability signal indicates MORE risk (+1: higher is riskier,
+# -1: lower is riskier). Leaving the calibration range in the safe direction (e.g. an input
+# that is more typical than any calibration row) is clipped but not treated as unsupported.
+# Signals not listed count in both directions.
+CONFIDENCE_CANDIDATE = "Calibrated confidence"
+PROBABILITY_CANDIDATE = "Probability signals"
+LOGIT_EPS = 1e-6
+
+
+def logit_first_column(X) -> np.ndarray:
+    """Replace column 0 (max_prob) by its logit; other columns pass through unchanged.
+
+    Module-level so fitted pipelines stay picklable with joblib.
+    """
+    X = np.array(X, dtype=float, copy=True)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+    p = np.clip(X[:, 0], LOGIT_EPS, 1.0 - LOGIT_EPS)
+    X[:, 0] = np.log(p / (1.0 - p))
+    return X
+
+
+def positive_class_proba(estimator, X) -> np.ndarray:
+    """P(label == 1) from a fitted classifier, located via classes_ (never by column position)."""
+    probs = estimator.predict_proba(X)
+    classes = list(getattr(estimator, "classes_", range(probs.shape[1])))
+    if 1 in classes:
+        return probs[:, classes.index(1)]
+    # Fitted on a single class that is not 1 (only possible on degenerate data): P(correct) = 0.
+    return np.zeros(probs.shape[0], dtype=float)
+
+
+RISK_DIRECTION = {
+    "max_prob": -1,
+    "margin": -1,
+    "entropy": +1,
+    "bootstrap_disagreement": +1,
+    "bootstrap_std": +1,
+    "knn_distance": +1,
+    "knn_distance_percentile": +1,
+    "isolation_score": +1,
+    "missing_count": +1,
+    "missing_fraction": +1,
+    "out_of_range_count": +1,
+    "unseen_category_count": +1,
+    # regression reliability signals (all: higher = riskier)
+    "knn_target_std": +1,
+    "knn_oof_residual": +1,
+    "prediction_extrapolation": +1,
+}
 
 
 def compute_ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> float:
@@ -136,13 +206,105 @@ class Model2Detector(BaseEstimator, ClassifierMixin):
         if not isinstance(features_df, pd.DataFrame):
             features_df = pd.DataFrame(features_df)
 
-        X = features_df[self.feature_names]
-        probs = self.pipeline.predict_proba(X)
+        X = self._clip_to_support(features_df[self.feature_names])
+        return np.clip(positive_class_proba(self.pipeline, X), 0.0, 1.0)
 
-        if probs.shape[1] == 2:
-            return np.clip(probs[:, 1], 0.0, 1.0)
-        else:
-            return np.clip(probs[:, 0], 0.0, 1.0)
+    # ------------------------------------------------------------------
+    # Support of the training data (CALIBRATION split reliability features)
+    # ------------------------------------------------------------------
+    # Model 2 is fitted on a finite range of each reliability signal. Outside that
+    # range a linear model extrapolates without limit (e.g. a positive weight on
+    # knn_distance would make ever more distant inputs look ever more trustworthy).
+    # Inputs are therefore clipped to the observed range, and rows that needed
+    # clipping are reported so the mitigation layer can refuse to TRUST them.
+
+    def set_support(self, X: pd.DataFrame) -> "Model2Detector":
+        """
+        Record the per-feature [min, max] of the calibration rows Model 2 was fitted on.
+
+        Support is tracked for EVERY reliability signal in X (not only the winner's inputs):
+        P(correct) was only validated on calibration rows whose kNN distance, anomaly score,
+        etc. lay in this range, so an input outside it is an unvalidated extrapolation even
+        when the selected model uses max_prob alone.
+        """
+        cols = list(dict.fromkeys(list(self.feature_names) + list(X.columns)))
+        X = X[cols].astype(float)
+        self.support_feature_names_ = cols
+        self.feature_min_ = {c: float(X[c].min()) for c in cols}
+        self.feature_max_ = {c: float(X[c].max()) for c in cols}
+        return self
+
+    def _has_support(self) -> bool:
+        # Artifacts saved before support tracking existed do not have these attributes.
+        return hasattr(self, "feature_min_") and hasattr(self, "feature_max_")
+
+    def _clip_to_support(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not self._has_support():
+            return X
+        lo = pd.Series(self.feature_min_)[self.feature_names]
+        hi = pd.Series(self.feature_max_)[self.feature_names]
+        X = X.astype(float).clip(lower=lo, upper=hi, axis=1)
+        # NaN cannot be scored; substitute the riskiest supported value. Such rows are also
+        # reported by support_violations, so they are never auto-TRUSTED.
+        for c in self.feature_names:
+            if X[c].isna().any():
+                X[c] = X[c].fillna(lo[c] if RISK_DIRECTION.get(c, 0) < 0 else hi[c])
+        return X
+
+    def support_violations(self, features_df: pd.DataFrame) -> List[List[str]]:
+        """
+        For each row, the reliability features that lie outside the range seen when
+        Model 2 was trained, in their risky direction (see RISK_DIRECTION); an empty list
+        means the estimate is supported by training data. Non-finite values always count.
+        """
+        if not self._has_support():
+            return [[] for _ in range(len(features_df))]
+        # Older artifacts tracked support only for the model inputs.
+        cols = [c for c in getattr(self, "support_feature_names_", self.feature_names)
+                if c in features_df.columns]
+        return find_support_violations(features_df, cols, self.feature_min_, self.feature_max_)
+
+
+def find_support_violations(
+    features_df: pd.DataFrame,
+    cols: List[str],
+    feature_min: Dict[str, float],
+    feature_max: Dict[str, float],
+) -> List[List[str]]:
+    """Per row, the columns outside [min, max] in their risky direction (non-finite always counts)."""
+    X = features_df[cols].astype(float)
+    out_mask = pd.DataFrame(False, index=X.index, columns=cols)
+    for c in cols:
+        lo, hi = feature_min[c], feature_max[c]
+        tol = SUPPORT_TOLERANCE * (max(abs(lo), abs(hi)) + 1.0)
+        col = X[c].to_numpy()
+        direction = RISK_DIRECTION.get(c, 0)
+        below = (col < lo - tol) if direction <= 0 else np.zeros(len(col), dtype=bool)
+        above = (col > hi + tol) if direction >= 0 else np.zeros(len(col), dtype=bool)
+        out_mask[c] = ~np.isfinite(col) | below | above
+    return [[c for c in cols if row[c]] for _, row in out_mask.iterrows()]
+
+
+SUPPORT_EXCLUDED = ("predicted_class", "missing_fraction")
+
+
+class ReliabilitySupport:
+    """
+    Calibration-split range of the reliability signals, used in confidence-fallback mode
+    (no Model 2) so inputs outside the range the thresholds were tuned on are never
+    auto-TRUSTED, exactly as Model 2 mode does via Model2Detector.support_violations.
+    """
+
+    def __init__(self, calib_features: pd.DataFrame):
+        cols = [c for c in calib_features.columns if c not in SUPPORT_EXCLUDED]
+        X = calib_features[cols].astype(float)
+        self.feature_names = cols
+        self.feature_min_ = {c: float(X[c].min()) for c in cols}
+        self.feature_max_ = {c: float(X[c].max()) for c in cols}
+
+    def support_violations(self, features_df: pd.DataFrame) -> List[List[str]]:
+        cols = [c for c in self.feature_names if c in features_df.columns]
+        return find_support_violations(features_df, cols, self.feature_min_, self.feature_max_)
 
 
 def evaluate_oof_cv(
@@ -165,12 +327,7 @@ def evaluate_oof_cv(
 
         fold_pipe = clone(pipeline)
         fold_pipe.fit(X_tr, y_tr)
-
-        p = fold_pipe.predict_proba(X_va)
-        if p.shape[1] == 2:
-            oof_probs[val_idx] = p[:, 1]
-        else:
-            oof_probs[val_idx] = p[:, 0]
+        oof_probs[val_idx] = positive_class_proba(fold_pipe, X_va)
 
     # AUROC for identifying incorrect predictions
     # y=0 is incorrect, y=1 is correct.
@@ -250,6 +407,8 @@ def train_model2(
             "brier_score": 0.0,
             "reliability_table": [],
             "oof_candidates": {},
+            "winner_feature_names": [],
+            "selection_metric": None,
             "n_correct": n_correct,
             "n_incorrect": n_incorrect,
             "message": (
@@ -273,81 +432,87 @@ def train_model2(
             if redundant in feature_cols:
                 feature_cols.remove(redundant)
 
+    # missing_fraction is missing_count divided by a constant (the number of input columns),
+    # i.e. an exact linear duplicate; it stays in the API features but is not fed twice.
+    if "missing_count" in feature_cols and "missing_fraction" in feature_cols:
+        feature_cols.remove("missing_fraction")
+
     X = features_df[feature_cols].copy()
 
-    # Stratified 5-fold CV splits on calibration split
+    # Stratified 5-fold CV splits on the calibration split, shared by EVERY candidate so
+    # their OOF scores are computed on identical rows and folds.
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
     cv_splits = list(skf.split(X, y_arr))
 
-    # Reference: Confidence-only model (using max_prob alone, unweighted)
-    conf_pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(random_state=random_state)),
-    ])
-    X_conf = features_df[["max_prob"]].copy()
-    oof_conf_probs, conf_ref_auroc = evaluate_oof_cv(conf_pipe, X_conf, y_arr, cv_splits)
+    def _prob_lr() -> Pipeline:
+        # Column 0 must be max_prob: it is mapped to logit(max_prob) (Platt-style).
+        return Pipeline([
+            ("logit", FunctionTransformer(logit_first_column)),
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression(max_iter=1000, random_state=random_state)),
+        ])
 
-    # Candidate 1: Logistic Regression (UNWEIGHTED for honest probability calibration)
-    # RATIONALE: We remove class_weight="balanced" because we want true empirical probabilities,
-    # not probabilities artificially shifted toward a synthetic 50/50 prior.
-    lr_pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("classifier", LogisticRegression(
-            max_iter=1000,
-            random_state=random_state,
-        )),
-    ])
-    oof_lr_probs, lr_auroc = evaluate_oof_cv(lr_pipe, X, y_arr, cv_splits)
+    # Candidates in order of increasing complexity: (name, pipeline, input columns).
+    # Ties in the selection criterion go to the earlier (simpler) candidate.
+    candidates: List[Tuple[str, Pipeline, List[str]]] = [
+        (CONFIDENCE_CANDIDATE, _prob_lr(), ["max_prob"]),
+    ]
+    prob_cols = ["max_prob"] + [c for c in ("margin", "entropy") if c in features_df.columns]
+    if num_classes > 2 and len(prob_cols) > 1:
+        # In multiclass, margin and entropy carry information beyond max_prob (how the
+        # remaining probability mass is spread); in binary they are functions of max_prob.
+        candidates.append((PROBABILITY_CANDIDATE, _prob_lr(), prob_cols))
 
-    # Candidate 2: Small regularized Gradient Boosting (calibrated with sigmoid)
-    # RATIONALE: Wrapped in CalibratedClassifierCV with method="sigmoid" because the calibration
-    # split is relatively small and isotonic regression tends to overfit / produce stepwise artifacts.
+    # Full-feature LR (UNWEIGHTED for honest probability calibration: no class_weight="balanced",
+    # which would shift probabilities toward a synthetic 50/50 prior).
+    candidates.append(("Logistic Regression", Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", LogisticRegression(max_iter=1000, random_state=random_state)),
+    ]), feature_cols))
+
+    # Small regularized Gradient Boosting, calibrated with sigmoid (isotonic overfits /
+    # produces step artifacts on a calibration split of this size).
     gb_base = HistGradientBoostingClassifier(
         max_iter=50,
         max_leaf_nodes=15,
         min_samples_leaf=20,
         random_state=random_state,
     )
-    gb_calibrated = CalibratedClassifierCV(estimator=gb_base, cv=3, method="sigmoid")
-    gb_pipe = Pipeline([
+    candidates.append(("Gradient Boosting", Pipeline([
         ("scaler", StandardScaler()),
-        ("classifier", gb_calibrated),
-    ])
-    oof_gb_probs, gb_auroc = evaluate_oof_cv(gb_pipe, X, y_arr, cv_splits)
+        ("classifier", CalibratedClassifierCV(estimator=gb_base, cv=3, method="sigmoid")),
+    ]), feature_cols))
 
-    # Compute ECE and Brier scores for all candidates
-    candidates_scores = {
-        "Logistic Regression": {
-            "cv_auroc": round(lr_auroc, 4),
-            "ece": compute_ece(y_arr, oof_lr_probs),
-            "brier": compute_brier_score(y_arr, oof_lr_probs),
-        },
-        "Gradient Boosting": {
-            "cv_auroc": round(gb_auroc, 4),
-            "ece": compute_ece(y_arr, oof_gb_probs),
-            "brier": compute_brier_score(y_arr, oof_gb_probs),
-        },
-        "Confidence Baseline (max_prob only)": {
-            "cv_auroc": round(conf_ref_auroc, 4),
-            "ece": compute_ece(y_arr, oof_conf_probs),
-            "brier": compute_brier_score(y_arr, oof_conf_probs),
-        },
-    }
+    candidates_scores: Dict[str, Dict[str, Any]] = {}
+    oof_candidates: Dict[str, np.ndarray] = {}
+    for name, pipe, cols in candidates:
+        oof, auroc = evaluate_oof_cv(pipe, features_df[cols].copy(), y_arr, cv_splits)
+        oof_candidates[name] = oof
+        candidates_scores[name] = {
+            "cv_auroc": round(auroc, 4),
+            "ece": compute_ece(y_arr, oof),
+            "brier": compute_brier_score(y_arr, oof),
+            "brier_unrounded": float(np.mean((np.clip(oof, 0, 1) - y_arr) ** 2)),
+            "features": list(cols),
+        }
 
-    if gb_auroc > lr_auroc:
-        winner_name = "Gradient Boosting"
-        winner_pipe = gb_pipe
-        oof_trustworthiness = oof_gb_probs
-        winner_auroc = gb_auroc
-    else:
-        winner_name = "Logistic Regression"
-        winner_pipe = lr_pipe
-        oof_trustworthiness = oof_lr_probs
-        winner_auroc = lr_auroc
+    # Selection: lowest OOF Brier (strict improvement required to prefer a later candidate).
+    winner_idx = 0
+    for i in range(1, len(candidates)):
+        if candidates_scores[candidates[i][0]]["brier_unrounded"] <                 candidates_scores[candidates[winner_idx][0]]["brier_unrounded"] - 1e-9:
+            winner_idx = i
+    for sc in candidates_scores.values():
+        sc.pop("brier_unrounded")
+    winner_name, winner_pipe, winner_cols = candidates[winner_idx]
+    oof_trustworthiness = oof_candidates[winner_name]
+    winner_auroc = candidates_scores[winner_name]["cv_auroc"]
+    conf_ref_auroc = candidates_scores[CONFIDENCE_CANDIDATE]["cv_auroc"]
+    for name in candidates_scores:
+        candidates_scores[name]["selected"] = name == winner_name
 
-    # Final fit on the entire calibration split
+    X_win = features_df[winner_cols].copy()
     final_pipeline = clone(winner_pipe)
-    final_pipeline.fit(X, y_arr)
+    final_pipeline.fit(X_win, y_arr)
 
     final_ece = compute_ece(y_arr, oof_trustworthiness)
     final_brier = compute_brier_score(y_arr, oof_trustworthiness)
@@ -355,31 +520,45 @@ def train_model2(
 
     detector = Model2Detector(
         pipeline=final_pipeline,
-        feature_names=feature_cols,
+        feature_names=list(winner_cols),
         winner_name=winner_name,
         cv_auroc=winner_auroc,
         confidence_ref_auroc=conf_ref_auroc,
         ece=final_ece,
         brier_score=final_brier,
     )
+    # Support over all reliability signals the candidates could see (see set_support).
+    detector.set_support(features_df[list(dict.fromkeys(list(winner_cols) + feature_cols))])
+
+    if winner_name == CONFIDENCE_CANDIDATE:
+        message = (
+            "The calibrated-confidence candidate had the lowest out-of-fold Brier score on the "
+            "calibration split: the additional reliability features did not improve correctness "
+            "estimates, so Model 2 is a calibrated mapping of Model 1 confidence (same ranking)."
+        )
+    else:
+        message = (
+            f"{winner_name} had the lowest out-of-fold Brier score on the calibration split "
+            f"({final_brier:.4f} vs {candidates_scores[CONFIDENCE_CANDIDATE]['brier']:.4f} for calibrated confidence)."
+        )
 
     return {
         "status": "success",
         "model2": detector,
         "winner_name": winner_name,
+        "selection_metric": "oof_brier",
         "oof_trustworthiness": oof_trustworthiness,
         "candidates_scores": candidates_scores,
         "confidence_ref_auroc": round(conf_ref_auroc, 4),
+        # Columns available to the full-feature candidates (after label/redundancy exclusion).
         "feature_names": feature_cols,
+        # Columns the deployed (winning) Model 2 actually uses.
+        "winner_feature_names": list(winner_cols),
         "ece": final_ece,
         "brier_score": final_brier,
         "reliability_table": rel_table,
-        "oof_candidates": {
-            "Logistic Regression": oof_lr_probs,
-            "Gradient Boosting": oof_gb_probs,
-            "Confidence Baseline": oof_conf_probs,
-        },
+        "oof_candidates": oof_candidates,
         "n_correct": n_correct,
         "n_incorrect": n_incorrect,
-        "message": None,
+        "message": message,
     }

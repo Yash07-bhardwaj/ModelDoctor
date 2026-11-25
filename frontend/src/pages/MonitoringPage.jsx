@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { api, errorMessage } from "../api/client.js";
 import { Button, Card, DECISION_COLORS, DecisionBadge, Empty, ErrorBox, Notice, Spinner, Stat, Table, pct, useLoader } from "../components/ui.jsx";
+import { RegressionMonitoring } from "../components/regression.jsx";
 
 function FeedbackCell({ row, classes, pending, setPending }) {
   if (row.actual !== null && row.actual !== undefined) {
@@ -42,6 +43,7 @@ export default function MonitoringPage() {
     );
 
   const m = mon.data;
+  if (m.task_type === "regression") return <RegressionMonitoring m={m} id={id} reload={mon.reload} />;
   const classes = schema.data?.classes || [];
   const ove = m.observed_vs_estimated;
   const pendingCount = Object.values(pending).filter(Boolean).length;

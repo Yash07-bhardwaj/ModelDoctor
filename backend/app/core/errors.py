@@ -1,13 +1,30 @@
-"""Consistent JSON error responses. Stack traces are never returned to clients."""
+"""Consistent JSON error responses. Stack traces are never returned to clients.
+
+Every error body is {"detail": str, "code": str, "request_id": str}. Unexpected
+exceptions become a generic 500 in app.core.middleware.RequestContextMiddleware.
+"""
 
 import logging
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ml.inference import ModelLoadError
+
 logger = logging.getLogger("modeldoctor")
+
+_HTTP_CODES = {
+    400: "bad_request",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    413: "too_large",
+    415: "unsupported_media_type",
+    422: "validation_error",
+}
 
 
 class ApiError(Exception):
@@ -36,30 +53,43 @@ def unprocessable(detail: str) -> ApiError:
     return ApiError(422, detail, "validation_error")
 
 
+def service_unavailable(detail: str, code: str = "model_unavailable") -> ApiError:
+    return ApiError(503, detail, code)
+
+
+def error_body(detail: str, code: str, request_id: Optional[str]) -> Dict[str, Any]:
+    return {"detail": detail, "code": code, "request_id": request_id or "-"}
+
+
+def _request_id(request: Request) -> Optional[str]:
+    return request.scope.get("state", {}).get("request_id")
+
+
+def _respond(request: Request, status: int, detail: str, code: str) -> JSONResponse:
+    return JSONResponse(status_code=status, content=error_body(detail, code, _request_id(request)))
+
+
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
-    async def _api_error(_: Request, exc: ApiError):
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
+    async def _api_error(request: Request, exc: ApiError):
+        return _respond(request, exc.status_code, exc.detail, exc.code)
+
+    @app.exception_handler(ModelLoadError)
+    async def _model_load_error(request: Request, exc: ModelLoadError):
+        logger.error("Model could not be loaded: %s", exc)
+        return _respond(request, 503, f"The model is unavailable: {exc} Retrain the model.", "model_unavailable")
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(_: Request, exc: StarletteHTTPException):
-        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc.detail), "code": "http_error"})
+    async def _http_error(request: Request, exc: StarletteHTTPException):
+        return _respond(request, exc.status_code, str(exc.detail), _HTTP_CODES.get(exc.status_code, "http_error"))
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, exc: RequestValidationError):
+    async def _validation_error(request: Request, exc: RequestValidationError):
+        errors = exc.errors()
+        if any(err.get("type") == "json_invalid" for err in errors):
+            return _respond(request, 400, "Request body is not valid JSON.", "malformed_json")
         messages = []
-        for err in exc.errors():
+        for err in errors:
             loc = ".".join(str(p) for p in err.get("loc", []) if p != "body")
             messages.append(f"{loc}: {err.get('msg')}" if loc else str(err.get("msg")))
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "; ".join(messages) or "Invalid request", "code": "validation_error"},
-        )
-
-    @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception):
-        logger.exception("Unhandled server error")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error. Check the server logs for details.", "code": "internal_error"},
-        )
+        return _respond(request, 422, "; ".join(messages) or "Invalid request", "validation_error")

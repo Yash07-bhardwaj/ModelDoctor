@@ -37,14 +37,14 @@ def row(name, rep):
         f"| {name} | {rep['selected_model']} | {rep['reliability_mode']} | {rep['overall_error_rate']:.1%} | "
         f"{md['coverage']:.1%} | {base['selective_risk']:.1%} | {md['selective_risk']:.1%} | "
         f"{f(rep['auroc']['confidence_baseline'])} | {f(rep['auroc']['modeldoctor'])} | "
-        f"{rep['calibration']['modeldoctor']['ece']:.3f} |"
+        f"{rep['calibration']['modeldoctor']['ece']:.3f} | {rep['model2']['winner'] or '—'} |"
     )
 
 
 HEADER = (
     "| Run | Model 1 | Reliability mode | Error (no filter) | Coverage | Baseline error @ same cov. | "
-    "ModelDoctor error | AUROC baseline | AUROC ModelDoctor | ECE ModelDoctor |\n"
-    "|---|---|---|---|---|---|---|---|---|---|"
+    "ModelDoctor error | AUROC baseline | AUROC ModelDoctor | ECE ModelDoctor | Model 2 winner |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|"
 )
 
 
@@ -93,7 +93,9 @@ def main():
         "",
         "- *Reliability mode* `confidence_fallback` means the calibration split had fewer than 30 wrong (or right) "
         "predictions, so Model 2 could not be trained and ModelDoctor falls back to Model 1's calibrated confidence "
-        "(identical to the baseline by construction).",
+        "(same score as the baseline; only inputs outside the calibration range are sent to REVIEW).",
+        "- A Model 2 winner of `Calibrated confidence` means the extra reliability features did not beat Platt-scaled "
+        "Model 1 confidence on out-of-fold Brier score on the calibration split, so the ranking equals the baseline.",
         "- Model 1 is calibrated inside the train split, so on clean i.i.d. data its confidence is already a strong "
         "error detector and ModelDoctor often only matches it. Gains are expected where Model 1 is poorly "
         "calibrated (e.g. Decision Tree, KNN) or where input-quality signals carry extra information.",

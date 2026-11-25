@@ -6,11 +6,12 @@ from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-from fastapi import UploadFile
+from fastapi import Request, UploadFile
 
 from app.core import sessions
 from app.core.config import settings
 from app.core.errors import ApiError, bad_request, conflict
+from ml.inference import InferenceEngine
 
 
 async def read_upload_limited(file: UploadFile) -> bytes:
@@ -54,18 +55,28 @@ def df_to_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return json.loads(df.to_json(orient="records", date_format="iso"))
 
 
-def require_artifacts(session_id: str) -> Dict[str, Any]:
-    """Return fitted artifacts or raise 409 if training has not completed."""
+def require_engine(session_id: str) -> InferenceEngine:
+    """Return the session's inference engine or raise 409 if training has not completed."""
     status = sessions.get_status(session_id)
     state = status.get("status")
     if state in ("pending", "running"):
         raise conflict(f"Training is still in progress (stage: {status.get('stage') or 'starting'}).")
     if state == "failed":
         raise conflict(f"Training failed: {status.get('error')}. Start training again.")
-    artifacts = sessions.load_artifacts(session_id)
-    if artifacts is None:
+    engine = sessions.load_engine(session_id)
+    if engine is None:
         raise conflict("Training has not been run for this session yet. POST /api/train/{session_id} first.")
-    return artifacts
+    return engine
+
+
+def require_artifacts(session_id: str) -> Dict[str, Any]:
+    """Fitted artifacts as a dict (see require_engine)."""
+    return require_engine(session_id).artifacts
+
+
+def request_id(request: Request) -> str:
+    """The request ID assigned by RequestContextMiddleware."""
+    return getattr(request.state, "request_id", "-")
 
 
 def normalize_label(value: Any) -> str:
@@ -75,3 +86,14 @@ def normalize_label(value: Any) -> str:
     if isinstance(value, (float, np.floating)) and float(value).is_integer():
         return str(int(value))
     return str(value).strip()
+
+
+def numeric_outcome(value: Any):
+    """A finite float for a regression outcome, or None when the value is not a usable number."""
+    if isinstance(value, bool):
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) else None

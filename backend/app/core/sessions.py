@@ -26,15 +26,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import joblib
-
 from app.core.config import settings
 from app.core.errors import not_found
+from ml.inference import InferenceEngine, artifact_files, engine_from_directory, has_artifacts, save_artifacts
 
 _SESSION_RE = re.compile(r"^[a-f0-9]{32}$")
-_ARTIFACT_KEYS = ["model1", "extractor", "model2", "engine"]
 _lock = threading.RLock()
-_artifact_cache: Dict[str, Dict[str, Any]] = {}
+_engine_cache: Dict[str, InferenceEngine] = {}
 
 
 def now_iso() -> str:
@@ -66,6 +64,17 @@ def _read_json(path: Path, default: Any = None) -> Any:
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_json_file(path: Path, default: Any = None) -> Any:
+    """Read a JSON file under the storage root (default when absent)."""
+    return _read_json(path, default)
+
+
+def write_json_file(path: Path, data: Any) -> None:
+    """Atomically write a JSON file under the storage root."""
+    with _lock:
+        _write_json(path, data)
 
 
 def create_session(raw_bytes: bytes, filename: str, meta: Dict[str, Any]) -> str:
@@ -125,52 +134,48 @@ def get_status(session_id: str) -> Dict[str, Any]:
 
 def save_training_outputs(session_id: str, artifacts: Dict[str, Any], report: Dict[str, Any]) -> None:
     path = session_dir(session_id)
-    for key in _ARTIFACT_KEYS:
-        target = path / f"{key}.joblib"
-        if artifacts.get(key) is None:
-            target.unlink(missing_ok=True)
-        else:
-            joblib.dump(artifacts[key], target)
-    meta = {k: v for k, v in artifacts.items() if k not in _ARTIFACT_KEYS}
-    joblib.dump(meta, path / "artifacts_meta.joblib")
+    save_artifacts(path, artifacts)
     _write_json(path / "thresholds.json", artifacts["engine"].to_dict())
     _write_json(path / "schema.json", artifacts["feature_schema"])
     _write_json(path / "report.json", report)
     with _lock:
-        _artifact_cache.pop(session_id, None)
+        _engine_cache.pop(session_id, None)
 
 
 def clear_training_outputs(session_id: str) -> None:
     """Remove a previous training run's outputs before retraining."""
     path = session_dir(session_id)
-    for name in [f"{k}.joblib" for k in _ARTIFACT_KEYS] + [
-        "artifacts_meta.joblib", "thresholds.json", "schema.json", "report.json"
-    ]:
-        (path / name).unlink(missing_ok=True)
+    for file in artifact_files(path) + [path / n for n in ("thresholds.json", "schema.json", "report.json")]:
+        file.unlink(missing_ok=True)
     with _lock:
-        _artifact_cache.pop(session_id, None)
+        _engine_cache.pop(session_id, None)
 
 
 def get_report(session_id: str) -> Optional[Dict[str, Any]]:
     return _read_json(session_dir(session_id) / "report.json")
 
 
-def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
-    """Load (and cache) fitted artifacts; None if training has not completed."""
+def load_engine(session_id: str) -> Optional[InferenceEngine]:
+    """
+    Load (and cache) the inference engine for a session; None if training has not completed.
+    Raises ml.inference.ModelLoadError if artifacts exist but are corrupt or inconsistent.
+    """
     with _lock:
-        if session_id in _artifact_cache:
-            return _artifact_cache[session_id]
+        if session_id in _engine_cache:
+            return _engine_cache[session_id]
     path = session_dir(session_id)
-    meta_path = path / "artifacts_meta.joblib"
-    if not meta_path.exists():
+    if not has_artifacts(path):
         return None
-    artifacts = dict(joblib.load(meta_path))
-    for key in _ARTIFACT_KEYS:
-        f = path / f"{key}.joblib"
-        artifacts[key] = joblib.load(f) if f.exists() else None
+    engine = engine_from_directory(path)  # classification or regression engine, by the bundle's task type
     with _lock:
-        _artifact_cache[session_id] = artifacts
-    return artifacts
+        _engine_cache[session_id] = engine
+    return engine
+
+
+def load_artifacts(session_id: str) -> Optional[Dict[str, Any]]:
+    """Fitted artifacts as a dict (see load_engine)."""
+    engine = load_engine(session_id)
+    return engine.artifacts if engine is not None else None
 
 
 def append_jsonl(session_id: str, name: str, rows: List[Dict[str, Any]]) -> None:
@@ -227,7 +232,7 @@ def list_sessions() -> List[Dict[str, Any]]:
 def delete_session(session_id: str) -> None:
     path = session_dir(session_id)
     with _lock:
-        _artifact_cache.pop(session_id, None)
+        _engine_cache.pop(session_id, None)
     shutil.rmtree(path, ignore_errors=True)
 
 
@@ -248,7 +253,7 @@ def cleanup_old_sessions(max_age_hours: Optional[float] = None) -> int:
         if latest < cutoff:
             shutil.rmtree(p, ignore_errors=True)
             with _lock:
-                _artifact_cache.pop(p.name, None)
+                _engine_cache.pop(p.name, None)
             removed += 1
     return removed
 

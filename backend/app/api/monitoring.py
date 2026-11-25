@@ -2,10 +2,10 @@
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import normalize_label, require_artifacts
+from app.api.deps import normalize_label, numeric_outcome, require_artifacts
 from app.core import sessions
 from app.schemas.models import FeedbackRequest, FeedbackResponse, MonitoringResponse
-from ml.reliability.monitoring import compute_monitoring
+from ml.reliability.monitoring import compute_monitoring, compute_regression_monitoring
 
 router = APIRouter(prefix="/api", tags=["monitoring"])
 
@@ -14,11 +14,23 @@ router = APIRouter(prefix="/api", tags=["monitoring"])
 def submit_feedback(session_id: str, body: FeedbackRequest):
     """Record actual outcomes for previously served predictions (by prediction_id)."""
     artifacts = require_artifacts(session_id)
-    classes = set(artifacts["classes"])
     known_ids = {p["prediction_id"] for p in sessions.read_jsonl(session_id, "predictions.jsonl")}
-
     accepted, rejected = [], []
     now = sessions.now_iso()
+    if artifacts.get("task_type") == "regression":
+        for item in body.items:
+            value = numeric_outcome(item.actual)
+            if item.prediction_id not in known_ids:
+                rejected.append({"prediction_id": item.prediction_id, "reason": "unknown prediction_id"})
+            elif value is None:
+                rejected.append({"prediction_id": item.prediction_id,
+                                 "reason": f"'{item.actual}' is not a finite number (regression outcome)"})
+            else:
+                accepted.append({"prediction_id": item.prediction_id, "actual": value, "timestamp": now})
+        sessions.append_jsonl(session_id, "feedback.jsonl", accepted)
+        labeled = {f["prediction_id"] for f in sessions.read_jsonl(session_id, "feedback.jsonl")}
+        return {"accepted": len(accepted), "rejected": rejected, "labeled_total": len(labeled & known_ids)}
+    classes = set(artifacts["classes"])
     for item in body.items:
         actual = normalize_label(item.actual)
         if item.prediction_id not in known_ids:
@@ -45,7 +57,10 @@ def get_monitoring(
     artifacts = require_artifacts(session_id)
     predictions = sessions.read_jsonl(session_id, "predictions.jsonl")
     feedback = sessions.read_jsonl(session_id, "feedback.jsonl")
-    summary = compute_monitoring(predictions, feedback, artifacts.get("monitoring_baseline"))
+    if artifacts.get("task_type") == "regression":
+        summary = compute_regression_monitoring(predictions, feedback, artifacts.get("monitoring_baseline"))
+    else:
+        summary = compute_monitoring(predictions, feedback, artifacts.get("monitoring_baseline"))
 
     actual_by_id = {f["prediction_id"]: f["actual"] for f in feedback}
     listed = [p for p in predictions if p["prediction_id"] not in actual_by_id] if awaiting_only else predictions

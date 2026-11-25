@@ -5,17 +5,20 @@ import TrainingPage from "./pages/TrainingPage.jsx";
 import ReportPage from "./pages/ReportPage.jsx";
 import PredictPage from "./pages/PredictPage.jsx";
 import MonitoringPage from "./pages/MonitoringPage.jsx";
+import OverviewPage from "./pages/OverviewPage.jsx";
+import { ApiStatus, HealthProvider, OfflineBanner } from "./components/status.jsx";
 
 function SessionNav() {
   const { id } = useParams();
   const tabs = [
+    ["overview", "Overview"],
     ["train", "Training"],
     ["report", "Report"],
     ["predict", "Predict"],
     ["monitor", "Monitoring"],
   ];
   return (
-    <nav className="flex gap-1 overflow-x-auto">
+    <nav aria-label="Session" className="flex max-w-full gap-1 overflow-x-auto">
       {tabs.map(([path, label]) => (
         <NavLink
           key={path}
@@ -43,9 +46,13 @@ function Shell({ children, session = false }) {
             <span className="text-lg font-semibold tracking-tight">ModelDoctor</span>
             <span className="hidden text-sm text-slate-500 sm:inline">· tells you when not to believe your model</span>
           </Link>
-          {session && <SessionNav />}
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            {session && <SessionNav />}
+            <ApiStatus />
+          </div>
         </div>
       </header>
+      <OfflineBanner />
       <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
     </div>
   );
@@ -53,23 +60,26 @@ function Shell({ children, session = false }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Shell><UploadPage /></Shell>} />
-      <Route path="/s/:id/train" element={<Shell session><TrainingPage /></Shell>} />
-      <Route path="/s/:id/report" element={<Shell session><ReportPage /></Shell>} />
-      <Route path="/s/:id/predict" element={<Shell session><PredictPage /></Shell>} />
-      <Route path="/s/:id/monitor" element={<Shell session><MonitoringPage /></Shell>} />
-      <Route
-        path="*"
-        element={
-          <Shell>
-            <div className="py-20 text-center">
-              <h1 className="text-xl font-semibold">Page not found</h1>
-              <Link className="mt-2 inline-block text-indigo-600 underline" to="/">Back to upload</Link>
-            </div>
-          </Shell>
-        }
-      />
-    </Routes>
+    <HealthProvider>
+      <Routes>
+        <Route path="/" element={<Shell><UploadPage /></Shell>} />
+        <Route path="/s/:id/overview" element={<Shell session><OverviewPage /></Shell>} />
+        <Route path="/s/:id/train" element={<Shell session><TrainingPage /></Shell>} />
+        <Route path="/s/:id/report" element={<Shell session><ReportPage /></Shell>} />
+        <Route path="/s/:id/predict" element={<Shell session><PredictPage /></Shell>} />
+        <Route path="/s/:id/monitor" element={<Shell session><MonitoringPage /></Shell>} />
+        <Route
+          path="*"
+          element={
+            <Shell>
+              <div className="py-20 text-center">
+                <h1 className="text-xl font-semibold">Page not found</h1>
+                <Link className="mt-2 inline-block text-indigo-600 underline" to="/">Back to upload</Link>
+              </div>
+            </Shell>
+          }
+        />
+      </Routes>
+    </HealthProvider>
   );
 }

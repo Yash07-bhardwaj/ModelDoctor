@@ -5,6 +5,8 @@ import io
 import numpy as np
 import pandas as pd
 
+from ml.task import CLASSIFICATION, REGRESSION, resolve_task_type
+
 
 class DatasetValidationError(ValueError):
     """Base exception for all dataset validation failures."""
@@ -72,10 +74,11 @@ def is_continuous_target(series: pd.Series) -> bool:
 def load_dataset(
     filepath_or_buffer: Union[str, IO[bytes], IO[str]],
     target_column: str,
+    task_type: str = CLASSIFICATION,
 ) -> pd.DataFrame:
     """
     Load a CSV dataset into a pandas DataFrame and strictly validate it
-    for tabular classification.
+    for the configured task (classification by default, or regression).
 
     Parameters
     ----------
@@ -83,6 +86,8 @@ def load_dataset(
         File path or buffer containing CSV data.
     target_column : str
         The name of the target/label column.
+    task_type : str, default="classification"
+        "classification" (unchanged behaviour) or "regression" (see validate_regression_target).
 
     Returns
     -------
@@ -94,6 +99,7 @@ def load_dataset(
     DatasetValidationError
         If dataset cannot be parsed or fails validation criteria.
     """
+    task_type = resolve_task_type(task_type)
     try:
         if isinstance(filepath_or_buffer, str) and "\n" in filepath_or_buffer:
             df = pd.read_csv(io.StringIO(filepath_or_buffer))
@@ -120,13 +126,18 @@ def load_dataset(
             "for meaningful train, calibration, and test splits."
         )
 
+    if task_type == REGRESSION:
+        validate_regression_target(df, target_column)
+        return df
+
     target_series = df[target_column]
 
     # 3. Check for continuous target (Regression is strictly out of scope)
     if is_continuous_target(target_series):
         raise UnsupportedTaskError(
             "Only classification targets are supported in this version. "
-            f"Target '{target_column}' appears to be a continuous numeric variable."
+            f"Target '{target_column}' appears to be a continuous numeric variable. "
+            "To model it as a continuous value, set task_type='regression'."
         )
 
     # 4. Validate target column has no missing values
@@ -157,3 +168,63 @@ def load_dataset(
         )
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# Regression target validation
+# ---------------------------------------------------------------------------
+
+def validate_regression_target(df: pd.DataFrame, target_column: str) -> None:
+    """
+    Validate a continuous numeric regression target. Invalid values are rejected,
+    never coerced or turned into categorical labels.
+
+    Checks (in order): numeric dtype (booleans and text are rejected), no missing
+    values, all values finite, not constant, at least one feature column, and no
+    feature column that is an exact copy of the target (target leakage).
+    Integer-valued, zero, negative, tiny and huge targets are all valid.
+    """
+    target = df[target_column]
+
+    if pd.api.types.is_bool_dtype(target) or not pd.api.types.is_numeric_dtype(target):
+        sample = [str(v) for v in target.dropna().astype(str).unique()[:3]]
+        raise InvalidTargetError(
+            f"Regression target '{target_column}' must be numeric; found non-numeric values "
+            f"(e.g. {sample}). Use task_type='classification' for categorical targets."
+        )
+
+    n_missing = int(target.isna().sum())
+    if n_missing:
+        raise InvalidTargetError(
+            f"Regression target '{target_column}' contains {n_missing} missing values. "
+            "Target column cannot contain missing values."
+        )
+
+    values = target.to_numpy(dtype=float)
+    n_nonfinite = int((~np.isfinite(values)).sum())
+    if n_nonfinite:
+        raise InvalidTargetError(
+            f"Regression target '{target_column}' contains {n_nonfinite} infinite or non-finite values."
+        )
+
+    if np.unique(values).size < 2:
+        raise InvalidTargetError(
+            f"Regression target '{target_column}' is constant; a regression target must vary."
+        )
+
+    features = [c for c in df.columns if c != target_column]
+    if not features:
+        raise DatasetValidationError("Dataset has no feature columns besides the target.")
+
+    leaking = []
+    for col in features:
+        series = df[col]
+        if pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
+            col_vals = series.to_numpy(dtype=float)
+            if np.array_equal(col_vals, values, equal_nan=False):
+                leaking.append(str(col))
+    if leaking:
+        raise DatasetValidationError(
+            f"Feature column(s) {leaking} are identical to the target '{target_column}' "
+            "(target leakage); remove them before training."
+        )

@@ -5,6 +5,8 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { api, errorMessage } from "../api/client.js";
+import { DeployControl } from "../components/status.jsx";
+import { RegressionReport } from "../components/regression.jsx";
 import { Card, DECISION_COLORS, DecisionBadge, ErrorBox, Notice, Spinner, Stat, Table, num, pct, useLoader } from "../components/ui.jsx";
 
 const MD = "#4f46e5";
@@ -76,6 +78,8 @@ export default function ReportPage() {
       </div>
     );
 
+  if (r.task === "regression") return <RegressionReport r={r} id={id} />;
+
   const cmp = Object.fromEntries(r.comparison.map((c) => [c.method, c]));
   const md = cmp["ModelDoctor"], base = cmp["Confidence baseline"];
   const better = r.selective_risk_improvement > 0.005 && r.reliability_mode === "model2";
@@ -92,9 +96,12 @@ export default function ReportPage() {
             <b>{r.selected_model}</b> ({r.calibration_method} calibrated)
           </p>
         </div>
-        <Link to={`/s/${id}/predict`} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-          Make predictions →
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <DeployControl sessionId={id} />
+          <Link to={`/s/${id}/predict`} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+            Make predictions →
+          </Link>
+        </div>
       </div>
 
       <Notice tone={better ? "good" : worse ? "bad" : "info"}>

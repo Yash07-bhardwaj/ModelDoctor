@@ -1,0 +1,1752 @@
+{
+ "task": "regression",
+ "target_column": "y",
+ "selected_model": "Decision Tree",
+ "selection_metric": "mae",
+ "cv_strategy": "random",
+ "n_folds": 5,
+ "leaderboard": [
+  {
+   "status": "success",
+   "train_seconds": 0.054,
+   "mae_mean": 1003491.070539,
+   "mae_std": 32608.661488,
+   "rmse_mean": 1373044.448483,
+   "rmse_std": 50437.077476,
+   "r2_mean": 0.999999,
+   "r2_std": 0.0,
+   "r2_undefined_folds": 0,
+   "error_message": null,
+   "model": "Decision Tree",
+   "order": 1,
+   "forced": false
+  },
+  {
+   "status": "success",
+   "train_seconds": 0.917,
+   "mae_mean": 1858571.8739,
+   "mae_std": 1636709.962837,
+   "rmse_mean": 18498359.526795,
+   "rmse_std": 30989629.773268,
+   "r2_mean": 0.999163,
+   "r2_std": 0.00166,
+   "r2_undefined_folds": 0,
+   "error_message": null,
+   "model": "Random Forest",
+   "order": 2,
+   "forced": false
+  },
+  {
+   "status": "success",
+   "train_seconds": 0.291,
+   "mae_mean": 6320911.550799,
+   "mae_std": 5554631.235233,
+   "rmse_mean": 100787734.775799,
+   "rmse_std": 106659143.096837,
+   "r2_mean": 0.98802,
+   "r2_std": 0.014459,
+   "r2_undefined_folds": 0,
+   "error_message": null,
+   "model": "XGBoost",
+   "order": 3,
+   "forced": false
+  },
+  {
+   "status": "success",
+   "train_seconds": 0.149,
+   "mae_mean": 201643876.674132,
+   "mae_std": 26900960.942121,
+   "rmse_mean": 674406900.5164,
+   "rmse_std": 61491238.429065,
+   "r2_mean": 0.70821,
+   "r2_std": 0.051083,
+   "r2_undefined_folds": 0,
+   "error_message": null,
+   "model": "KNN",
+   "order": 4,
+   "forced": false
+  },
+  {
+   "status": "success",
+   "train_seconds": 0.048,
+   "mae_mean": 723091888.901708,
+   "mae_std": 41971931.946563,
+   "rmse_mean": 1072095181.128535,
+   "rmse_std": 72976026.082827,
+   "r2_mean": 0.269512,
+   "r2_std": 0.03174,
+   "r2_undefined_folds": 0,
+   "error_message": null,
+   "model": "Ridge Regression",
+   "order": 0,
+   "forced": false
+  }
+ ],
+ "median_baseline_cv": {
+  "mae_mean": 343920516.202246,
+  "rmse_mean": 1301899233.622293,
+  "r2_mean": -0.073377
+ },
+ "calibration_holdout": {
+  "model1": {
+   "mae": 1000521.3834707801,
+   "rmse": 1366260.1523552805,
+   "r2": 0.9999984759288509
+  },
+  "median_baseline": {
+   "mae": 260667422.29171804,
+   "rmse": 1136367661.4628375,
+   "r2": -0.05432904308559827
+  },
+  "note": "Calibration partition, not used for model selection. Test metrics are deferred until Model 2 and mitigation are finalized."
+ },
+ "features": {
+  "numeric": [
+   "x1",
+   "x2",
+   "x3"
+  ],
+  "categorical": [
+   "region"
+  ]
+ },
+ "dropped_columns": [],
+ "splits": {
+  "task_type": "regression",
+  "strategy": "random",
+  "fractions": [
+   0.6,
+   0.2,
+   0.2
+  ],
+  "random_state": 42,
+  "group_column": null,
+  "time_column": null,
+  "boundaries": {},
+  "duplicate_rows_across_splits": 0,
+  "total_rows": 3000,
+  "train": {
+   "rows": 1800,
+   "percentage": 60.0,
+   "target": {
+    "mean": -4658053126.133126,
+    "std": 1261512603.838271,
+    "min": -5008522388.07946,
+    "median": -4999333760.533924,
+    "max": 0.0
+   }
+  },
+  "calibration": {
+   "rows": 600,
+   "percentage": 20.0,
+   "target": {
+    "mean": -4741377062.556131,
+    "std": 1106702220.105712,
+    "min": -5008185014.138487,
+    "median": -4999286853.720026,
+    "max": 0.0
+   }
+  },
+  "test": {
+   "rows": 600,
+   "percentage": 20.0,
+   "target": {
+    "mean": -4549731397.686203,
+    "std": 1430827160.9134,
+    "min": -5007874815.622561,
+    "median": -4999158561.462216,
+    "max": 0.0
+   }
+  }
+ },
+ "test_partition": "evaluated once, after Model 1, Model 2 and thresholds were fixed",
+ "config": {
+  "target_risk": 0.05,
+  "min_coverage": 0.3,
+  "force_model": null,
+  "n_bootstraps": 10,
+  "force_review_on_anomalies": false,
+  "fast": false,
+  "random_state": 42,
+  "task_type": "regression",
+  "group_column": null,
+  "time_column": null,
+  "regression_metric": "mae",
+  "error_tolerance": null,
+  "error_tolerance_quantile": 0.9
+ },
+ "total_seconds": 2.33,
+ "reliability_mode": "model2",
+ "target_scale": {
+  "value": 3575585.101350101,
+  "method": "mad"
+ },
+ "model2": {
+  "status": "success",
+  "message": "Gradient Boosting had the lowest out-of-fold MSE of the error estimate on the calibration split.",
+  "winner": "Gradient Boosting",
+  "selection_metric": "oof_mse_of_scaled_abs_error",
+  "output": "estimated absolute error of Model 1 (target units; larger = less reliable; an expected value, not a probability or a bound)",
+  "n_calibration_rows": 600,
+  "feature_names": [
+   "bootstrap_std",
+   "knn_target_std",
+   "knn_oof_residual",
+   "prediction_extrapolation",
+   "knn_distance",
+   "knn_distance_percentile",
+   "isolation_score",
+   "missing_count",
+   "out_of_range_count",
+   "unseen_category_count"
+  ],
+  "candidate_feature_names": [
+   "bootstrap_std",
+   "knn_target_std",
+   "knn_oof_residual",
+   "prediction_extrapolation",
+   "knn_distance",
+   "knn_distance_percentile",
+   "isolation_score",
+   "missing_count",
+   "out_of_range_count",
+   "unseen_category_count"
+  ],
+  "candidates": {
+   "Constant (mean error)": {
+    "status": "success",
+    "order": 0,
+    "features": [
+     "bootstrap_std"
+    ],
+    "n_oof": 600,
+    "mse": 0.068741890375837,
+    "mae": 0.19948992553188782,
+    "spearman": -0.16522289091820652,
+    "mean_estimated": 0.2798203245373727,
+    "mean_observed": 0.2798203245373727,
+    "selected": false
+   },
+   "Bootstrap spread": {
+    "status": "success",
+    "order": 1,
+    "features": [
+     "bootstrap_std"
+    ],
+    "n_oof": 600,
+    "mse": 187.9698784493742,
+    "mae": 0.7589797582636109,
+    "spearman": -0.09477774089284091,
+    "mean_estimated": 0.8394053080550088,
+    "mean_observed": 0.2798203245373727,
+    "selected": false
+   },
+   "Linear (all features)": {
+    "status": "success",
+    "order": 2,
+    "features": [
+     "bootstrap_std",
+     "knn_target_std",
+     "knn_oof_residual",
+     "prediction_extrapolation",
+     "knn_distance",
+     "knn_distance_percentile",
+     "isolation_score",
+     "missing_count",
+     "out_of_range_count",
+     "unseen_category_count"
+    ],
+    "n_oof": 600,
+    "mse": 8.425512554310409,
+    "mae": 0.3027897697647123,
+    "spearman": 0.2999491244856427,
+    "mean_estimated": 0.39859974808836457,
+    "mean_observed": 0.2798203245373727,
+    "selected": false
+   },
+   "Gradient Boosting": {
+    "status": "success",
+    "order": 3,
+    "features": [
+     "bootstrap_std",
+     "knn_target_std",
+     "knn_oof_residual",
+     "prediction_extrapolation",
+     "knn_distance",
+     "knn_distance_percentile",
+     "isolation_score",
+     "missing_count",
+     "out_of_range_count",
+     "unseen_category_count"
+    ],
+    "n_oof": 600,
+    "mse": 0.06656242302555043,
+    "mae": 0.19195814725687455,
+    "spearman": 0.30339105445071535,
+    "mean_estimated": 0.2825961273875269,
+    "mean_observed": 0.2798203245373727,
+    "selected": true
+   }
+  },
+  "oof_winner_metrics_scaled": {
+   "mse": 0.06656242302555043,
+   "mae": 0.19195814725687455,
+   "spearman": 0.30339105445071535,
+   "mean_estimated": 0.2825961273875269,
+   "mean_observed": 0.2798203245373727
+  },
+  "n_oof_rows": 600,
+  "calibration_error_scaled": {
+   "mean": 0.2798203245373727,
+   "median": 0.21398100135034687,
+   "p90": 0.6000877886032912,
+   "max": 1.7401479427883837
+  }
+ },
+ "thresholds": {
+  "status": "ok",
+  "trust_threshold": 0.3147227660004223,
+  "reject_threshold": null,
+  "error_tolerance_scaled": 0.6257550587399408,
+  "target_risk": 0.05,
+  "min_coverage": 0.3,
+  "target_risk_met": true,
+  "message": "Target failure rate 5.0% met at estimated error <= 0.3147 (scaled) with 62.2% calibration coverage. No band of >= 30 rows reaches a 30% failure rate; REJECT is disabled.",
+  "calibration_rows": 600,
+  "calibration_base_failure_rate": 0.0967,
+  "calibration_coverage": 0.6217,
+  "calibration_failure_rate": 0.0483,
+  "band_metadata": [
+   {
+    "name": "TRUST",
+    "count": 373,
+    "share": 0.6217,
+    "failure_rate": 0.0483,
+    "failures": 18,
+    "mae": 830240.3882316584,
+    "rmse": 1130072.5374715978,
+    "estimate_source": "calibration_oof",
+    "failure_rate_upper95": 0.07498520853773433
+   },
+   {
+    "name": "REVIEW",
+    "count": 227,
+    "share": 0.3783,
+    "failure_rate": 0.1762,
+    "failures": 40,
+    "mae": 1280322.31397383,
+    "rmse": 1683890.0221864197,
+    "estimate_source": "calibration_oof"
+   },
+   {
+    "name": "REJECT",
+    "count": 0,
+    "share": 0.0,
+    "failure_rate": null,
+    "failures": 0,
+    "mae": null,
+    "rmse": null,
+    "estimate_source": "calibration_oof"
+   }
+  ],
+  "score": "estimated absolute error (lower is more reliable)",
+  "trust_threshold_units": 1125318.0331668041,
+  "reject_threshold_units": null,
+  "error_tolerance": {
+   "value": 2237440.4651249894,
+   "scaled": 0.6257550587399408,
+   "source": "train_oof_abs_error_q0.9"
+  },
+  "target_scale": 3575585.101350101,
+  "force_review_on_anomalies": false
+ },
+ "error_tolerance": {
+  "value": 2237440.4651249894,
+  "scaled": 0.6257550587399408,
+  "source": "train_oof_abs_error_q0.9"
+ },
+ "test_evaluation": {
+  "model1": {
+   "n": 600,
+   "mae": 9358235.809861945,
+   "rmse": 204090416.4249242,
+   "r2": 0.9796543826437779,
+   "r2_note": null,
+   "median_baseline": {
+    "mae": 452198679.83715147,
+    "rmse": 1499802870.0751827
+   },
+   "mae_skill_vs_median": 0.9793050350937953
+  },
+  "model2": {
+   "n": 600,
+   "n_missing_estimates": 0,
+   "mae": 9000244.965501156,
+   "rmse": 204010793.15631786,
+   "spearman": 0.391527962319224,
+   "pearson": 0.0754770439707271,
+   "mean_estimated": 988698.2525892452,
+   "mean_observed": 9358235.809861945,
+   "constant_reference": {
+    "estimate": 1000521.38347078,
+    "mae": 9073327.005762005,
+    "rmse": 204046986.96491227
+   },
+   "calibration_bins": [
+    {
+     "count": 60,
+     "mean_estimated": 119510.01824186748,
+     "mean_observed": 137071.8891500314
+    },
+    {
+     "count": 60,
+     "mean_estimated": 507493.0589361952,
+     "mean_observed": 885071.6557845274
+    },
+    {
+     "count": 60,
+     "mean_estimated": 650463.1086970682,
+     "mean_observed": 831698.4905426025
+    },
+    {
+     "count": 60,
+     "mean_estimated": 782003.6612462158,
+     "mean_observed": 888412.633159415
+    },
+    {
+     "count": 60,
+     "mean_estimated": 913813.7216743629,
+     "mean_observed": 979030.8589486599
+    },
+    {
+     "count": 60,
+     "mean_estimated": 1043307.6673291706,
+     "mean_observed": 1238747.1177869001
+    },
+    {
+     "count": 60,
+     "mean_estimated": 1173109.9269807492,
+     "mean_observed": 1050973.9868077277
+    },
+    {
+     "count": 60,
+     "mean_estimated": 1316038.9626438492,
+     "mean_observed": 1405219.1427129905
+    },
+    {
+     "count": 60,
+     "mean_estimated": 1486936.869397767,
+     "mean_observed": 1353900.9190653006
+    },
+    {
+     "count": 60,
+     "mean_estimated": 1894305.530745206,
+     "mean_observed": 84812231.40466128
+    }
+   ],
+   "ranking_baselines": {
+    "Model 1 bootstrap spread": 0.2836294264250962,
+    "Local training error (kNN out-of-fold residual)": 0.4022211841618613,
+    "Distance to training data (kNN)": 0.003996276944287448
+   }
+  },
+  "uncertainty": {
+   "prediction_intervals": null,
+   "note": "This version provides an estimated absolute error per prediction, not a prediction interval; no interval coverage is claimed."
+  }
+ },
+ "mitigation_evaluation": {
+  "n_test": 600,
+  "error_tolerance": 2237440.4651249894,
+  "no_filtering": {
+   "count": 600,
+   "coverage": 1.0,
+   "failures": 68,
+   "failure_rate": 0.1133,
+   "mae": 9358235.809861945,
+   "rmse": 204090416.4249242
+  },
+  "modeldoctor_bands": [
+   {
+    "decision": "TRUST",
+    "count": 366,
+    "coverage": 0.61,
+    "failures": 19,
+    "failure_rate": 0.0519,
+    "mae": 818373.1774965244,
+    "rmse": 1134905.7000626337
+   },
+   {
+    "decision": "REVIEW",
+    "count": 234,
+    "coverage": 0.39,
+    "failures": 49,
+    "failure_rate": 0.2094,
+    "mae": 22715456.85022837,
+    "rmse": 326803133.6738179
+   },
+   {
+    "decision": "REJECT",
+    "count": 0,
+    "coverage": 0.0,
+    "failures": 0,
+    "failure_rate": null,
+    "mae": null,
+    "rmse": null
+   }
+  ],
+  "overall_coverage": 0.61,
+  "matched_coverage_baselines": [
+   {
+    "baseline": "Model 1 bootstrap spread",
+    "bands": [
+     {
+      "decision": "TRUST",
+      "count": 366,
+      "coverage": 0.61,
+      "failures": 33,
+      "failure_rate": 0.0902,
+      "mae": 915806.6165276043,
+      "rmse": 1278986.3059052767
+     },
+     {
+      "decision": "REVIEW",
+      "count": 234,
+      "coverage": 0.39,
+      "failures": 35,
+      "failure_rate": 0.1496,
+      "mae": 22563060.958410528,
+      "rmse": 326802301.3871546
+     },
+     {
+      "decision": "REJECT",
+      "count": 0,
+      "coverage": 0.0,
+      "failures": 0,
+      "failure_rate": null,
+      "mae": null,
+      "rmse": null
+     }
+    ],
+    "trust_failures_reduction": 14,
+    "trust_mae_reduction": 97433.43903107988,
+    "trust_mae_reduction_relative": 0.1063908441724422,
+    "risk_coverage": {
+     "curve": [
+      {
+       "coverage": 0.0017,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0217,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0417,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0633,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0833,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.1033,
+       "selective_mae": 180891.8776244348,
+       "selective_failure_rate": 0.0323
+      },
+      {
+       "coverage": 0.1233,
+       "selective_mae": 267417.0754380355,
+       "selective_failure_rate": 0.0405
+      },
+      {
+       "coverage": 0.145,
+       "selective_mae": 405265.8005670898,
+       "selective_failure_rate": 0.046
+      },
+      {
+       "coverage": 0.165,
+       "selective_mae": 542957.1573283648,
+       "selective_failure_rate": 0.0606
+      },
+      {
+       "coverage": 0.185,
+       "selective_mae": 597023.0613529102,
+       "selective_failure_rate": 0.0721
+      },
+      {
+       "coverage": 0.205,
+       "selective_mae": 693999.6539319201,
+       "selective_failure_rate": 0.0976
+      },
+      {
+       "coverage": 0.225,
+       "selective_mae": 689099.9781347275,
+       "selective_failure_rate": 0.0889
+      },
+      {
+       "coverage": 0.2467,
+       "selective_mae": 708945.1167215785,
+       "selective_failure_rate": 0.0811
+      },
+      {
+       "coverage": 0.2667,
+       "selective_mae": 707881.7396714926,
+       "selective_failure_rate": 0.075
+      },
+      {
+       "coverage": 0.2867,
+       "selective_mae": 745132.4404751034,
+       "selective_failure_rate": 0.0814
+      },
+      {
+       "coverage": 0.3067,
+       "selective_mae": 768957.5606681419,
+       "selective_failure_rate": 0.0815
+      },
+      {
+       "coverage": 0.3283,
+       "selective_mae": 820223.2108657759,
+       "selective_failure_rate": 0.0863
+      },
+      {
+       "coverage": 0.3483,
+       "selective_mae": 845773.6095606972,
+       "selective_failure_rate": 0.0957
+      },
+      {
+       "coverage": 0.3683,
+       "selective_mae": 840620.8851404923,
+       "selective_failure_rate": 0.0905
+      },
+      {
+       "coverage": 0.3883,
+       "selective_mae": 855159.0448708473,
+       "selective_failure_rate": 0.0858
+      },
+      {
+       "coverage": 0.4083,
+       "selective_mae": 862164.2774107057,
+       "selective_failure_rate": 0.0816
+      },
+      {
+       "coverage": 0.43,
+       "selective_mae": 877659.6627380423,
+       "selective_failure_rate": 0.0853
+      },
+      {
+       "coverage": 0.45,
+       "selective_mae": 895782.8184522629,
+       "selective_failure_rate": 0.0889
+      },
+      {
+       "coverage": 0.47,
+       "selective_mae": 891217.2329217626,
+       "selective_failure_rate": 0.0851
+      },
+      {
+       "coverage": 0.49,
+       "selective_mae": 878402.33418875,
+       "selective_failure_rate": 0.0816
+      },
+      {
+       "coverage": 0.5117,
+       "selective_mae": 899754.3581063274,
+       "selective_failure_rate": 0.0879
+      },
+      {
+       "coverage": 0.5317,
+       "selective_mae": 912640.2648864286,
+       "selective_failure_rate": 0.094
+      },
+      {
+       "coverage": 0.5517,
+       "selective_mae": 931058.7645536809,
+       "selective_failure_rate": 0.0967
+      },
+      {
+       "coverage": 0.5717,
+       "selective_mae": 924282.9807197026,
+       "selective_failure_rate": 0.0933
+      },
+      {
+       "coverage": 0.5933,
+       "selective_mae": 917818.3641313944,
+       "selective_failure_rate": 0.0899
+      },
+      {
+       "coverage": 0.6133,
+       "selective_mae": 915344.8933707994,
+       "selective_failure_rate": 0.0897
+      },
+      {
+       "coverage": 0.6333,
+       "selective_mae": 922880.1539576881,
+       "selective_failure_rate": 0.0921
+      },
+      {
+       "coverage": 0.6533,
+       "selective_mae": 927299.2821515312,
+       "selective_failure_rate": 0.0944
+      },
+      {
+       "coverage": 0.6733,
+       "selective_mae": 928272.7096410482,
+       "selective_failure_rate": 0.0941
+      },
+      {
+       "coverage": 0.695,
+       "selective_mae": 934668.9462284046,
+       "selective_failure_rate": 0.0959
+      },
+      {
+       "coverage": 0.715,
+       "selective_mae": 952331.8816170436,
+       "selective_failure_rate": 0.1026
+      },
+      {
+       "coverage": 0.735,
+       "selective_mae": 954102.2770502216,
+       "selective_failure_rate": 0.102
+      },
+      {
+       "coverage": 0.755,
+       "selective_mae": 956073.9950371146,
+       "selective_failure_rate": 0.0993
+      },
+      {
+       "coverage": 0.7767,
+       "selective_mae": 977249.246843952,
+       "selective_failure_rate": 0.1073
+      },
+      {
+       "coverage": 0.7967,
+       "selective_mae": 972662.0238326304,
+       "selective_failure_rate": 0.1046
+      },
+      {
+       "coverage": 0.8167,
+       "selective_mae": 971919.1837738368,
+       "selective_failure_rate": 0.1061
+      },
+      {
+       "coverage": 0.8367,
+       "selective_mae": 969336.7010894087,
+       "selective_failure_rate": 0.1056
+      },
+      {
+       "coverage": 0.8567,
+       "selective_mae": 987597.1143708711,
+       "selective_failure_rate": 0.1109
+      },
+      {
+       "coverage": 0.8783,
+       "selective_mae": 989508.6668211396,
+       "selective_failure_rate": 0.1101
+      },
+      {
+       "coverage": 0.8983,
+       "selective_mae": 987365.1730130343,
+       "selective_failure_rate": 0.1076
+      },
+      {
+       "coverage": 0.9183,
+       "selective_mae": 990220.4136909219,
+       "selective_failure_rate": 0.1053
+      },
+      {
+       "coverage": 0.9383,
+       "selective_mae": 997080.9336875099,
+       "selective_failure_rate": 0.1066
+      },
+      {
+       "coverage": 0.96,
+       "selective_mae": 1017256.5512419476,
+       "selective_failure_rate": 0.1094
+      },
+      {
+       "coverage": 0.98,
+       "selective_mae": 9519404.279629739,
+       "selective_failure_rate": 0.1105
+      },
+      {
+       "coverage": 1.0,
+       "selective_mae": 9358235.809861945,
+       "selective_failure_rate": 0.1133
+      }
+     ],
+     "aurc_mae": 977174.8555630241
+    }
+   },
+   {
+    "baseline": "Local training error (kNN out-of-fold residual)",
+    "bands": [
+     {
+      "decision": "TRUST",
+      "count": 366,
+      "coverage": 0.61,
+      "failures": 25,
+      "failure_rate": 0.0683,
+      "mae": 14465838.194613561,
+      "rmse": 261307293.53737932
+     },
+     {
+      "decision": "REVIEW",
+      "count": 234,
+      "coverage": 0.39,
+      "failures": 43,
+      "failure_rate": 0.1838,
+      "mae": 1369421.82345557,
+      "rmse": 1740959.3896342325
+     },
+     {
+      "decision": "REJECT",
+      "count": 0,
+      "coverage": 0.0,
+      "failures": 0,
+      "failure_rate": null,
+      "mae": null,
+      "rmse": null
+     }
+    ],
+    "trust_failures_reduction": 6,
+    "trust_mae_reduction": 13647465.017117037,
+    "trust_mae_reduction_relative": 0.9434271857263514,
+    "risk_coverage": {
+     "curve": [
+      {
+       "coverage": 0.0017,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0217,
+       "selective_mae": 5.7220458984375e-06,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0417,
+       "selective_mae": 203724.42106674195,
+       "selective_failure_rate": 0.04
+      },
+      {
+       "coverage": 0.0633,
+       "selective_mae": 261764.97378274016,
+       "selective_failure_rate": 0.0263
+      },
+      {
+       "coverage": 0.0833,
+       "selective_mae": 292044.4819114876,
+       "selective_failure_rate": 0.02
+      },
+      {
+       "coverage": 0.1033,
+       "selective_mae": 358918.59292971704,
+       "selective_failure_rate": 0.0161
+      },
+      {
+       "coverage": 0.1233,
+       "selective_mae": 399817.62086703326,
+       "selective_failure_rate": 0.0135
+      },
+      {
+       "coverage": 0.145,
+       "selective_mae": 442734.53403144045,
+       "selective_failure_rate": 0.023
+      },
+      {
+       "coverage": 0.165,
+       "selective_mae": 476118.17677478597,
+       "selective_failure_rate": 0.0202
+      },
+      {
+       "coverage": 0.185,
+       "selective_mae": 483391.87373421644,
+       "selective_failure_rate": 0.018
+      },
+      {
+       "coverage": 0.205,
+       "selective_mae": 503015.0704196837,
+       "selective_failure_rate": 0.0163
+      },
+      {
+       "coverage": 0.225,
+       "selective_mae": 37533277.33903236,
+       "selective_failure_rate": 0.0222
+      },
+      {
+       "coverage": 0.2467,
+       "selective_mae": 34296150.6268297,
+       "selective_failure_rate": 0.0203
+      },
+      {
+       "coverage": 0.2667,
+       "selective_mae": 31796656.4156353,
+       "selective_failure_rate": 0.0187
+      },
+      {
+       "coverage": 0.2867,
+       "selective_mae": 29622926.61515285,
+       "selective_failure_rate": 0.0174
+      },
+      {
+       "coverage": 0.3067,
+       "selective_mae": 27746904.199485086,
+       "selective_failure_rate": 0.0217
+      },
+      {
+       "coverage": 0.3283,
+       "selective_mae": 25980906.67967061,
+       "selective_failure_rate": 0.0305
+      },
+      {
+       "coverage": 0.3483,
+       "selective_mae": 24519931.493782006,
+       "selective_failure_rate": 0.0287
+      },
+      {
+       "coverage": 0.3683,
+       "selective_mae": 23234012.12554115,
+       "selective_failure_rate": 0.0317
+      },
+      {
+       "coverage": 0.3883,
+       "selective_mae": 22076110.688487045,
+       "selective_failure_rate": 0.03
+      },
+      {
+       "coverage": 0.4083,
+       "selective_mae": 21052167.513446465,
+       "selective_failure_rate": 0.0367
+      },
+      {
+       "coverage": 0.43,
+       "selective_mae": 20048721.069013055,
+       "selective_failure_rate": 0.0426
+      },
+      {
+       "coverage": 0.45,
+       "selective_mae": 19207589.99672752,
+       "selective_failure_rate": 0.0481
+      },
+      {
+       "coverage": 0.47,
+       "selective_mae": 18442216.940410208,
+       "selective_failure_rate": 0.0496
+      },
+      {
+       "coverage": 0.49,
+       "selective_mae": 17725804.712498218,
+       "selective_failure_rate": 0.051
+      },
+      {
+       "coverage": 0.5117,
+       "selective_mae": 17035065.176460702,
+       "selective_failure_rate": 0.0554
+      },
+      {
+       "coverage": 0.5317,
+       "selective_mae": 16446386.210047668,
+       "selective_failure_rate": 0.0658
+      },
+      {
+       "coverage": 0.5517,
+       "selective_mae": 15876122.72747231,
+       "selective_failure_rate": 0.0634
+      },
+      {
+       "coverage": 0.5717,
+       "selective_mae": 15365840.608757753,
+       "selective_failure_rate": 0.0671
+      },
+      {
+       "coverage": 0.5933,
+       "selective_mae": 14851706.698093642,
+       "selective_failure_rate": 0.0702
+      },
+      {
+       "coverage": 0.6133,
+       "selective_mae": 14389599.92105193,
+       "selective_failure_rate": 0.0679
+      },
+      {
+       "coverage": 0.6333,
+       "selective_mae": 13975421.567903431,
+       "selective_failure_rate": 0.0711
+      },
+      {
+       "coverage": 0.6533,
+       "selective_mae": 13571551.772359531,
+       "selective_failure_rate": 0.0714
+      },
+      {
+       "coverage": 0.6733,
+       "selective_mae": 13209965.91673823,
+       "selective_failure_rate": 0.0718
+      },
+      {
+       "coverage": 0.695,
+       "selective_mae": 12839044.004005807,
+       "selective_failure_rate": 0.0743
+      },
+      {
+       "coverage": 0.715,
+       "selective_mae": 12517290.934628347,
+       "selective_failure_rate": 0.0746
+      },
+      {
+       "coverage": 0.735,
+       "selective_mae": 12202513.710796332,
+       "selective_failure_rate": 0.0771
+      },
+      {
+       "coverage": 0.755,
+       "selective_mae": 11909060.442949418,
+       "selective_failure_rate": 0.0751
+      },
+      {
+       "coverage": 0.7767,
+       "selective_mae": 11617346.923157718,
+       "selective_failure_rate": 0.0773
+      },
+      {
+       "coverage": 0.7967,
+       "selective_mae": 11353113.628238855,
+       "selective_failure_rate": 0.0774
+      },
+      {
+       "coverage": 0.8167,
+       "selective_mae": 11105219.916893695,
+       "selective_failure_rate": 0.0796
+      },
+      {
+       "coverage": 0.8367,
+       "selective_mae": 10864674.437716406,
+       "selective_failure_rate": 0.0797
+      },
+      {
+       "coverage": 0.8567,
+       "selective_mae": 10634951.877757397,
+       "selective_failure_rate": 0.0798
+      },
+      {
+       "coverage": 0.8783,
+       "selective_mae": 10411614.443810785,
+       "selective_failure_rate": 0.0873
+      },
+      {
+       "coverage": 0.8983,
+       "selective_mae": 10225633.659183789,
+       "selective_failure_rate": 0.0946
+      },
+      {
+       "coverage": 0.9183,
+       "selective_mae": 10042001.112222409,
+       "selective_failure_rate": 0.0998
+      },
+      {
+       "coverage": 0.9383,
+       "selective_mae": 9868403.63226237,
+       "selective_failure_rate": 0.1066
+      },
+      {
+       "coverage": 0.96,
+       "selective_mae": 9676406.448313128,
+       "selective_failure_rate": 0.1076
+      },
+      {
+       "coverage": 0.98,
+       "selective_mae": 9523904.80903168,
+       "selective_failure_rate": 0.1139
+      },
+      {
+       "coverage": 1.0,
+       "selective_mae": 9358235.809861945,
+       "selective_failure_rate": 0.1133
+      }
+     ],
+     "aurc_mae": 13401599.00894221
+    }
+   },
+   {
+    "baseline": "Distance to training data (kNN)",
+    "bands": [
+     {
+      "decision": "TRUST",
+      "count": 366,
+      "coverage": 0.61,
+      "failures": 32,
+      "failure_rate": 0.0874,
+      "mae": 14664300.046557559,
+      "rmse": 261308269.5540811
+     },
+     {
+      "decision": "REVIEW",
+      "count": 234,
+      "coverage": 0.39,
+      "failures": 36,
+      "failure_rate": 0.1538,
+      "mae": 1059007.1319534187,
+      "rmse": 1494362.66878834
+     },
+     {
+      "decision": "REJECT",
+      "count": 0,
+      "coverage": 0.0,
+      "failures": 0,
+      "failure_rate": null,
+      "mae": null,
+      "rmse": null
+     }
+    ],
+    "trust_failures_reduction": 13,
+    "trust_mae_reduction": 13845926.869061034,
+    "trust_mae_reduction_relative": 0.944192823735311,
+    "risk_coverage": {
+     "curve": [
+      {
+       "coverage": 0.0017,
+       "selective_mae": 207403.08425045013,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0217,
+       "selective_mae": 492583.605444468,
+       "selective_failure_rate": 0.0
+      },
+      {
+       "coverage": 0.0417,
+       "selective_mae": 610285.7937017822,
+       "selective_failure_rate": 0.04
+      },
+      {
+       "coverage": 0.0633,
+       "selective_mae": 741623.952371246,
+       "selective_failure_rate": 0.0526
+      },
+      {
+       "coverage": 0.0833,
+       "selective_mae": 705309.9608493614,
+       "selective_failure_rate": 0.04
+      },
+      {
+       "coverage": 0.1033,
+       "selective_mae": 724002.0599309705,
+       "selective_failure_rate": 0.0323
+      },
+      {
+       "coverage": 0.1233,
+       "selective_mae": 741923.1895118533,
+       "selective_failure_rate": 0.0405
+      },
+      {
+       "coverage": 0.145,
+       "selective_mae": 827180.8302500385,
+       "selective_failure_rate": 0.0575
+      },
+      {
+       "coverage": 0.165,
+       "selective_mae": 833268.1830976082,
+       "selective_failure_rate": 0.0505
+      },
+      {
+       "coverage": 0.185,
+       "selective_mae": 881112.5175073727,
+       "selective_failure_rate": 0.0631
+      },
+      {
+       "coverage": 0.205,
+       "selective_mae": 885737.6133083096,
+       "selective_failure_rate": 0.065
+      },
+      {
+       "coverage": 0.225,
+       "selective_mae": 905375.8637638163,
+       "selective_failure_rate": 0.0741
+      },
+      {
+       "coverage": 0.2467,
+       "selective_mae": 900329.0442780739,
+       "selective_failure_rate": 0.0743
+      },
+      {
+       "coverage": 0.2667,
+       "selective_mae": 909794.5651131987,
+       "selective_failure_rate": 0.075
+      },
+      {
+       "coverage": 0.2867,
+       "selective_mae": 928040.618094422,
+       "selective_failure_rate": 0.0756
+      },
+      {
+       "coverage": 0.3067,
+       "selective_mae": 929858.1123494998,
+       "selective_failure_rate": 0.0707
+      },
+      {
+       "coverage": 0.3283,
+       "selective_mae": 947362.5136523561,
+       "selective_failure_rate": 0.0761
+      },
+      {
+       "coverage": 0.3483,
+       "selective_mae": 937592.2415885652,
+       "selective_failure_rate": 0.0718
+      },
+      {
+       "coverage": 0.3683,
+       "selective_mae": 933962.0930291128,
+       "selective_failure_rate": 0.0724
+      },
+      {
+       "coverage": 0.3883,
+       "selective_mae": 952773.3021315464,
+       "selective_failure_rate": 0.0773
+      },
+      {
+       "coverage": 0.4083,
+       "selective_mae": 952355.5694520016,
+       "selective_failure_rate": 0.0776
+      },
+      {
+       "coverage": 0.43,
+       "selective_mae": 970379.4392088661,
+       "selective_failure_rate": 0.0814
+      },
+      {
+       "coverage": 0.45,
+       "selective_mae": 979910.2971867244,
+       "selective_failure_rate": 0.0815
+      },
+      {
+       "coverage": 0.47,
+       "selective_mae": 968390.8269638643,
+       "selective_failure_rate": 0.078
+      },
+      {
+       "coverage": 0.49,
+       "selective_mae": 969409.9023137904,
+       "selective_failure_rate": 0.0816
+      },
+      {
+       "coverage": 0.5117,
+       "selective_mae": 974423.6603965635,
+       "selective_failure_rate": 0.0814
+      },
+      {
+       "coverage": 0.5317,
+       "selective_mae": 987524.3015123863,
+       "selective_failure_rate": 0.0815
+      },
+      {
+       "coverage": 0.5517,
+       "selective_mae": 16078451.335455751,
+       "selective_failure_rate": 0.0816
+      },
+      {
+       "coverage": 0.5717,
+       "selective_mae": 15544995.684562543,
+       "selective_failure_rate": 0.0787
+      },
+      {
+       "coverage": 0.5933,
+       "selective_mae": 15015101.831987448,
+       "selective_failure_rate": 0.0787
+      },
+      {
+       "coverage": 0.6133,
+       "selective_mae": 14592107.586405821,
+       "selective_failure_rate": 0.087
+      },
+      {
+       "coverage": 0.6333,
+       "selective_mae": 14156009.650671303,
+       "selective_failure_rate": 0.0868
+      },
+      {
+       "coverage": 0.6533,
+       "selective_mae": 13746442.365210965,
+       "selective_failure_rate": 0.0867
+      },
+      {
+       "coverage": 0.6733,
+       "selective_mae": 13367162.766201664,
+       "selective_failure_rate": 0.0891
+      },
+      {
+       "coverage": 0.695,
+       "selective_mae": 12985681.800757173,
+       "selective_failure_rate": 0.0911
+      },
+      {
+       "coverage": 0.715,
+       "selective_mae": 12664108.048579147,
+       "selective_failure_rate": 0.1002
+      },
+      {
+       "coverage": 0.735,
+       "selective_mae": 12346220.904112881,
+       "selective_failure_rate": 0.0998
+      },
+      {
+       "coverage": 0.755,
+       "selective_mae": 12045626.148504123,
+       "selective_failure_rate": 0.0993
+      },
+      {
+       "coverage": 0.7767,
+       "selective_mae": 11733240.269572709,
+       "selective_failure_rate": 0.0987
+      },
+      {
+       "coverage": 0.7967,
+       "selective_mae": 11462596.205118798,
+       "selective_failure_rate": 0.0983
+      },
+      {
+       "coverage": 0.8167,
+       "selective_mae": 11213825.418841388,
+       "selective_failure_rate": 0.098
+      },
+      {
+       "coverage": 0.8367,
+       "selective_mae": 10976085.857015327,
+       "selective_failure_rate": 0.0996
+      },
+      {
+       "coverage": 0.8567,
+       "selective_mae": 10734617.33292251,
+       "selective_failure_rate": 0.0973
+      },
+      {
+       "coverage": 0.8783,
+       "selective_mae": 10511698.375474304,
+       "selective_failure_rate": 0.1044
+      },
+      {
+       "coverage": 0.8983,
+       "selective_mae": 10288450.352230953,
+       "selective_failure_rate": 0.102
+      },
+      {
+       "coverage": 0.9183,
+       "selective_mae": 10087971.090234408,
+       "selective_failure_rate": 0.1034
+      },
+      {
+       "coverage": 0.9383,
+       "selective_mae": 9900071.227304421,
+       "selective_failure_rate": 0.1066
+      },
+      {
+       "coverage": 0.96,
+       "selective_mae": 9698200.68391162,
+       "selective_failure_rate": 0.1076
+      },
+      {
+       "coverage": 0.98,
+       "selective_mae": 9520406.670032406,
+       "selective_failure_rate": 0.1088
+      },
+      {
+       "coverage": 1.0,
+       "selective_mae": 9358235.809861945,
+       "selective_failure_rate": 0.1133
+      }
+     ],
+     "aurc_mae": 6054123.21068244
+    }
+   }
+  ],
+  "risk_coverage": {
+   "modeldoctor": {
+    "curve": [
+     {
+      "coverage": 0.0017,
+      "selective_mae": 5.7220458984375e-06,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.0217,
+      "selective_mae": 5.7220458984375e-06,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.0417,
+      "selective_mae": 5.7220458984375e-06,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.0633,
+      "selective_mae": 5.7220458984375e-06,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.0833,
+      "selective_mae": 5.7220458984375e-06,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.1033,
+      "selective_mae": 181690.577438939,
+      "selective_failure_rate": 0.0
+     },
+     {
+      "coverage": 0.1233,
+      "selective_mae": 366465.68754725845,
+      "selective_failure_rate": 0.0405
+     },
+     {
+      "coverage": 0.145,
+      "selective_mae": 406271.3410939293,
+      "selective_failure_rate": 0.046
+     },
+     {
+      "coverage": 0.165,
+      "selective_mae": 468266.21435188525,
+      "selective_failure_rate": 0.0404
+     },
+     {
+      "coverage": 0.185,
+      "selective_mae": 506009.0104185311,
+      "selective_failure_rate": 0.036
+     },
+     {
+      "coverage": 0.205,
+      "selective_mae": 522639.5183195564,
+      "selective_failure_rate": 0.0325
+     },
+     {
+      "coverage": 0.225,
+      "selective_mae": 559180.3563605061,
+      "selective_failure_rate": 0.037
+     },
+     {
+      "coverage": 0.2467,
+      "selective_mae": 560031.3898166965,
+      "selective_failure_rate": 0.0338
+     },
+     {
+      "coverage": 0.2667,
+      "selective_mae": 588141.2865770578,
+      "selective_failure_rate": 0.0312
+     },
+     {
+      "coverage": 0.2867,
+      "selective_mae": 600562.389142724,
+      "selective_failure_rate": 0.0349
+     },
+     {
+      "coverage": 0.3067,
+      "selective_mae": 614297.1923869434,
+      "selective_failure_rate": 0.0326
+     },
+     {
+      "coverage": 0.3283,
+      "selective_mae": 625260.2489776127,
+      "selective_failure_rate": 0.0305
+     },
+     {
+      "coverage": 0.3483,
+      "selective_mae": 647689.3827432878,
+      "selective_failure_rate": 0.0335
+     },
+     {
+      "coverage": 0.3683,
+      "selective_mae": 676095.6928066754,
+      "selective_failure_rate": 0.0362
+     },
+     {
+      "coverage": 0.3883,
+      "selective_mae": 679075.2837816329,
+      "selective_failure_rate": 0.0343
+     },
+     {
+      "coverage": 0.4083,
+      "selective_mae": 684108.251539861,
+      "selective_failure_rate": 0.0367
+     },
+     {
+      "coverage": 0.43,
+      "selective_mae": 708410.1728071612,
+      "selective_failure_rate": 0.0388
+     },
+     {
+      "coverage": 0.45,
+      "selective_mae": 724689.8819474927,
+      "selective_failure_rate": 0.0407
+     },
+     {
+      "coverage": 0.47,
+      "selective_mae": 739473.1453709704,
+      "selective_failure_rate": 0.0426
+     },
+     {
+      "coverage": 0.49,
+      "selective_mae": 745426.4720085462,
+      "selective_failure_rate": 0.0408
+     },
+     {
+      "coverage": 0.5117,
+      "selective_mae": 757651.654154911,
+      "selective_failure_rate": 0.0423
+     },
+     {
+      "coverage": 0.5317,
+      "selective_mae": 779657.6276731163,
+      "selective_failure_rate": 0.047
+     },
+     {
+      "coverage": 0.5517,
+      "selective_mae": 795619.1774264044,
+      "selective_failure_rate": 0.0483
+     },
+     {
+      "coverage": 0.5717,
+      "selective_mae": 815124.7536460637,
+      "selective_failure_rate": 0.0525
+     },
+     {
+      "coverage": 0.5933,
+      "selective_mae": 827825.6415144406,
+      "selective_failure_rate": 0.0534
+     },
+     {
+      "coverage": 0.6133,
+      "selective_mae": 825879.4993267085,
+      "selective_failure_rate": 0.0543
+     },
+     {
+      "coverage": 0.6333,
+      "selective_mae": 842125.9442923822,
+      "selective_failure_rate": 0.0579
+     },
+     {
+      "coverage": 0.6533,
+      "selective_mae": 850035.0347098793,
+      "selective_failure_rate": 0.0587
+     },
+     {
+      "coverage": 0.6733,
+      "selective_mae": 857713.8274573548,
+      "selective_failure_rate": 0.0594
+     },
+     {
+      "coverage": 0.695,
+      "selective_mae": 858710.3133174087,
+      "selective_failure_rate": 0.06
+     },
+     {
+      "coverage": 0.715,
+      "selective_mae": 870609.0308304322,
+      "selective_failure_rate": 0.0629
+     },
+     {
+      "coverage": 0.735,
+      "selective_mae": 882743.2531010526,
+      "selective_failure_rate": 0.0658
+     },
+     {
+      "coverage": 0.755,
+      "selective_mae": 903010.3956024747,
+      "selective_failure_rate": 0.0706
+     },
+     {
+      "coverage": 0.7767,
+      "selective_mae": 913336.074685811,
+      "selective_failure_rate": 0.0751
+     },
+     {
+      "coverage": 0.7967,
+      "selective_mae": 921510.9085299261,
+      "selective_failure_rate": 0.0774
+     },
+     {
+      "coverage": 0.8167,
+      "selective_mae": 938129.7657345246,
+      "selective_failure_rate": 0.0816
+     },
+     {
+      "coverage": 0.8367,
+      "selective_mae": 952593.9621459668,
+      "selective_failure_rate": 0.0837
+     },
+     {
+      "coverage": 0.8567,
+      "selective_mae": 952323.2321895681,
+      "selective_failure_rate": 0.0856
+     },
+     {
+      "coverage": 0.8783,
+      "selective_mae": 967829.6256777946,
+      "selective_failure_rate": 0.093
+     },
+     {
+      "coverage": 0.8983,
+      "selective_mae": 974370.7031484402,
+      "selective_failure_rate": 0.0946
+     },
+     {
+      "coverage": 0.9183,
+      "selective_mae": 987569.7568123916,
+      "selective_failure_rate": 0.098
+     },
+     {
+      "coverage": 0.9383,
+      "selective_mae": 1000600.317808717,
+      "selective_failure_rate": 0.103
+     },
+     {
+      "coverage": 0.96,
+      "selective_mae": 9686773.929569904,
+      "selective_failure_rate": 0.1076
+     },
+     {
+      "coverage": 0.98,
+      "selective_mae": 9516333.579418853,
+      "selective_failure_rate": 0.1105
+     },
+     {
+      "coverage": 1.0,
+      "selective_mae": 9358235.809861945,
+      "selective_failure_rate": 0.1133
+     }
+    ],
+    "aurc_mae": 1084335.2801806747
+   }
+  },
+  "metric_definitions": {
+   "abs_error": "|y - y_hat| in target units.",
+   "failure": "abs_error > error tolerance (configured, or a quantile of Model 1's out-of-fold train errors).",
+   "failure_rate": "Share of failures in a band (the regression 'risk'). None for an empty band.",
+   "mae / rmse": "Mean absolute / root mean squared error of Model 1 within a band (target units).",
+   "coverage": "Share of test rows in a band; TRUST coverage = automatic-use rate.",
+   "matched_coverage": "Baselines get the same TRUST and REJECT band sizes as ModelDoctor (lowest scores TRUSTed, highest REJECTed).",
+   "risk_coverage_curve": "Rows accepted in increasing score order; selective MAE and failure rate at each coverage.",
+   "aurc_mae": "Mean selective MAE over all coverage levels (lower is better)."
+  }
+ },
+ "leakage_audit": {
+  "passed": true,
+  "checks": [
+   {
+    "check": "partitions are disjoint",
+    "passed": true,
+    "evidence": "train 1800, calibration 600, test 600 rows; pairwise intersections empty"
+   },
+   {
+    "check": "Model 1 cross-validation used train rows only",
+    "passed": true,
+    "evidence": "1800 out-of-fold rows == 1800 train rows"
+   },
+   {
+    "check": "Model 1 feature preprocessing fitted on train only",
+    "passed": true,
+    "evidence": "scaler saw 1800 rows (train = 1800)"
+   },
+   {
+    "check": "Model 1 target scaling fitted on train only",
+    "passed": true,
+    "evidence": "target scaler saw 1800 rows (train = 1800)"
+   },
+   {
+    "check": "Reliability feature extractor fitted on train only",
+    "passed": true,
+    "evidence": "extractor scaler saw 1800 rows (train = 1800)"
+   },
+   {
+    "check": "Model 2 trained on calibration rows only (out-of-fold Model 1 errors)",
+    "passed": true,
+    "evidence": "600 Model 2 rows == 600 calibration rows; Model 1 never saw them"
+   },
+   {
+    "check": "Thresholds tuned on calibration out-of-fold estimates only",
+    "passed": true,
+    "evidence": "600 threshold rows <= 600 calibration rows"
+   },
+   {
+    "check": "Error tolerance derived without calibration / test labels",
+    "passed": true,
+    "evidence": "source: train_oof_abs_error_q0.9"
+   },
+   {
+    "check": "Test partition used once, for final evaluation",
+    "passed": true,
+    "evidence": "600 rows scored after thresholds were fixed (test = 600)"
+   }
+  ]
+ },
+ "reproducibility": {
+  "run_id": "8f489733a9434205ad1a75a19245435e",
+  "created_at": "2026-11-25T08:50:23+00:00",
+  "dataset": {
+   "fingerprint_sha256": "9f3f36afcec3fef7eee276c1b5adff637992f0a7da7b5d9edcefdbd8b2e37a7e",
+   "rows": 3000,
+   "columns": [
+    "x1",
+    "x2",
+    "x3",
+    "region",
+    "y"
+   ]
+  },
+  "config": {
+   "target_risk": 0.05,
+   "min_coverage": 0.3,
+   "force_model": null,
+   "n_bootstraps": 10,
+   "force_review_on_anomalies": false,
+   "fast": false,
+   "random_state": 42,
+   "task_type": "regression",
+   "group_column": null,
+   "time_column": null,
+   "regression_metric": "mae",
+   "error_tolerance": null,
+   "error_tolerance_quantile": 0.9
+  },
+  "random_state": 42,
+  "split": {
+   "strategy": "random",
+   "fractions": [
+    0.6,
+    0.2,
+    0.2
+   ],
+   "index_sha256": {
+    "train": "1ea1a23f84c9a5645b12522f52866288437e9c237ca889441eb5aa01318b58a2",
+    "calibration": "85c003979c7d333ded2f977dd02f9b44cfceed226ec95c827d6cda8ed101648b",
+    "test": "d2586bfd25a7121bfe7d88c5d20e3b21e8c290a1793bc8d1a4798c3e14e9f34e"
+   }
+  },
+  "artifact_version": 1,
+  "behaviour_fingerprint": {
+   "sha256": "86bcb7b4314c655e524b2c792ca591327b238c75abe45cd2c85329b923366e52",
+   "probe": "first 25 calibration rows (in split order)"
+  },
+  "library_versions": {
+   "python": "3.12.10",
+   "numpy": "2.5.5",
+   "pandas": "3.1.1",
+   "scikit_learn": "1.9.1",
+   "scipy": "1.18.1",
+   "xgboost": "3.4.1"
+  }
+ },
+ "dataset_generator": {
+  "name": "large_offset_negative",
+  "n": 3000,
+  "seed": 104,
+  "description": "As heteroscedastic_continuous, scaled x1e6, shifted to -5e9, exact zeros when x1 < -1.5."
+ }
+}
